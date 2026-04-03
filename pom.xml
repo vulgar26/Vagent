@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Vagent：Maven 工程描述。定义依赖（Spring Boot、Web、Actuator、测试）与打包方式；与源码中的包名 com.vagent 对应。 -->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <!-- 继承 spring-boot-starter-parent：统一插件与依赖版本，省去手写大量 version -->
+    <parent>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-parent</artifactId>
+        <version>3.3.6</version>
+        <relativePath/>
+    </parent>
+
+    <!-- 坐标：groupId 与 Java 包名一致，便于发布与识别 -->
+    <groupId>com.vagent</groupId>
+    <artifactId>vagent</artifactId>
+    <version>0.1.0-SNAPSHOT</version>
+    <name>Vagent</name>
+    <description>Enterprise-style conversational RAG (M0 bootstrap)</description>
+
+    <properties>
+        <!-- Java 17+；与 Spring Boot 3 要求一致 -->
+        <java.version>17</java.version>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    </properties>
+
+    <dependencies>
+        <!-- Web：内嵌 Tomcat、Spring MVC，后续提供 REST 与 SSE -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+        <!-- Actuator：/actuator/health 等，M0 用于验证服务可运行 -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-actuator</artifactId>
+        </dependency>
+        <!-- 编译期生成配置元数据，便于 IDE 提示 application.yml 中的自定义属性（如 vagent.llm） -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-configuration-processor</artifactId>
+            <optional>true</optional>
+        </dependency>
+        <!-- 单元测试与 SpringBootTest -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <!-- 打包可执行 fat jar：java -jar 启动 -->
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+            </plugin>
+        </plugins>
+    </build>
+</project>

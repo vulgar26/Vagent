@@ -1,0 +1,29 @@
+# =============================================================================
+# Vagent 应用配置（M0：运行端口、健康检查、LLM 占位项）
+# =============================================================================
+# 说明：Spring Boot 会默认加载本文件；可通过 spring.profiles.active 引入其它 profile 覆盖。
+
+# Web 服务端口；浏览器/ curl 访问健康检查与后续 API 时使用该端口。
+server:
+  port: 8080
+
+# Actuator：提供 /actuator/health 等运维端点，用于验证进程是否就绪（策划书 S1/S6 的「可运行」基础）。
+management:
+  endpoints:
+    web:
+      exposure:
+        # 仅暴露必要端点，减小攻击面；后续若需 metrics 可再增加。
+        include: health,info
+  endpoint:
+    health:
+      # 启用探针分组，便于 K8s liveness/readiness 使用（本地可不关心）。
+      probes:
+        enabled: true
+
+# 业务自定义前缀 vagent.*，与 Spring 自带配置区分，避免键名冲突。
+vagent:
+  llm:
+    # 使用哪一种 LlmClient 实现：noop = 不调真实大模型，见 com.vagent.llm.impl.NoopLlmClient
+    provider: noop
+    # 默认模型 id；noop 不使用，接真实厂商时填写对应 model 名称。
+    default-model: ""
