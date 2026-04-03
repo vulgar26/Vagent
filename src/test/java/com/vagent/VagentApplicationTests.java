@@ -2,6 +2,7 @@ package com.vagent;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.test.context.ActiveProfiles;
 
 /**
  * Spring 上下文加载冒烟测试。
@@ -16,6 +17,7 @@ import org.springframework.boot.test.context.SpringBootTest;
  * 对 {@link com.vagent.llm.LlmClient} 做 mock 注入断言、或对 /actuator/health 做 MockMvc 测试等。
  */
 @SpringBootTest
+@ActiveProfiles("test")
 class VagentApplicationTests {
 
     @Test

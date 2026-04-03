@@ -8,11 +8,9 @@ package com.vagent.llm;
  * 业务编排层（RAG、SSE）只依赖本接口，不直接依赖某厂商的 SDK 或 HTTP 细节。
  * <p>
  * <b>为什么用接口而不是直接写某家客户端：</b>
- * 策划书要求 LLM 可替换、不要绑定过深。接口 + Spring Bean 按配置切换实现类，换厂商时新增实现类并改配置即可，
+ * LLM 可替换、不要绑定过深。接口 + Spring Bean 按配置切换实现类，换厂商时新增实现类并改配置即可，
  * 不必改编排主链路代码。
  * <p>
- * <b>与策划书 §3 的对应关系：</b>
- * 参考实现中的 {@code LLMService#streamChat} 一类能力，在 Vagent 里由本接口的实现类承担；当前 M0 仅有空实现 {@link com.vagent.llm.impl.NoopLlmClient}。
  */
 public interface LlmClient {
 

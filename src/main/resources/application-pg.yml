@@ -1,0 +1,11 @@
+# =============================================================================
+# Profile：pg — 可选，用于覆盖默认库连接（如 Docker 中服务名非 localhost）
+# =============================================================================
+# 默认已在 application.yml 使用 PostgreSQL；仅当需要换 host/port/库名时启用：
+#   --spring.profiles.active=pg
+#
+# spring:
+#   datasource:
+#     url: jdbc:postgresql://postgres:5432/vagent
+#     username: vagent
+#     password: vagent
