@@ -20,6 +20,8 @@ import org.springframework.boot.autoconfigure.security.servlet.UserDetailsServic
  * <p>
  * <b>M2 补充：</b> 知识库（pgvector）与 {@link com.vagent.embedding.EmbeddingClient} 由配置装配；测试 profile 仅加载 {@code schema-core.sql}，向量表用 Testcontainers 集成测试覆盖。
  * <p>
+ * <b>M3 补充：</b> {@link com.vagent.chat} 提供 SSE 流式对话与任务取消；{@link com.vagent.llm.LlmClient} 仍按配置选择实现（{@code noop} / {@code fake-stream}）。
+ * <p>
  */
 @MapperScan("com.vagent")
 @SpringBootApplication(exclude = {UserDetailsServiceAutoConfiguration.class})

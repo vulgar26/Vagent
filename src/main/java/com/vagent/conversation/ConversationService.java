@@ -12,6 +12,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 /**
@@ -26,6 +27,19 @@ public class ConversationService {
     public ConversationService(ConversationMapper conversationMapper, UserMapper userMapper) {
         this.conversationMapper = conversationMapper;
         this.userMapper = userMapper;
+    }
+
+    /**
+     * 校验会话属于当前用户，供流式对话等接口使用。
+     */
+    @Transactional(readOnly = true)
+    public Optional<Conversation> findOwnedByUser(String conversationId, UUID userId) {
+        String uid = UserIdFormats.compact(userId);
+        Conversation c = conversationMapper.selectById(conversationId);
+        if (c == null || !uid.equals(c.getUserId())) {
+            return Optional.empty();
+        }
+        return Optional.of(c);
     }
 
     @Transactional(readOnly = true)

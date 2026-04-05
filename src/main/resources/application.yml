@@ -1,5 +1,5 @@
 # =============================================================================
-# Vagent 应用配置（M0：端口、LLM；M1：PostgreSQL + JWT；M2：pgvector 知识库）
+# Vagent 应用配置（M0：端口、LLM；M1：PostgreSQL + JWT；M2：pgvector；M3：SSE 流式）
 # =============================================================================
 # 本地需先创建库与用户，并授权 schema public（见 README）；测试用 test profile + H2，不依赖本机 PG。
 
@@ -36,8 +36,11 @@ mybatis-plus:
 
 vagent:
   llm:
+    # noop | fake-stream（本地分块演示，不调用外网）
     provider: noop
     default-model: ""
+    fake-stream-chunk-size: 4
+    fake-stream-chunk-delay-ms: 25
   # 嵌入维度须与 schema-vector.sql 中 vector(N) 一致；hash 为可复现占位实现
   embedding:
     provider: hash

@@ -32,6 +32,16 @@ public class LlmProperties {
      */
     private String defaultModel = "";
 
+    /**
+     * {@code fake-stream} 时每段字符数（≥1）。
+     */
+    private int fakeStreamChunkSize = 4;
+
+    /**
+     * {@code fake-stream} 时每段之间延迟（毫秒），0 表示不 sleep。
+     */
+    private int fakeStreamChunkDelayMs = 25;
+
     public String getProvider() {
         return provider;
     }
@@ -46,5 +56,21 @@ public class LlmProperties {
 
     public void setDefaultModel(String defaultModel) {
         this.defaultModel = defaultModel;
+    }
+
+    public int getFakeStreamChunkSize() {
+        return fakeStreamChunkSize;
+    }
+
+    public void setFakeStreamChunkSize(int fakeStreamChunkSize) {
+        this.fakeStreamChunkSize = fakeStreamChunkSize;
+    }
+
+    public int getFakeStreamChunkDelayMs() {
+        return fakeStreamChunkDelayMs;
+    }
+
+    public void setFakeStreamChunkDelayMs(int fakeStreamChunkDelayMs) {
+        this.fakeStreamChunkDelayMs = fakeStreamChunkDelayMs;
     }
 }

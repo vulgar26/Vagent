@@ -1,5 +1,8 @@
 # test profile：H2 模拟 PostgreSQL，仅加载核心业务表（无 pgvector / CREATE EXTENSION）。
 spring:
+  mvc:
+    async:
+      request-timeout: 120000
   datasource:
     url: jdbc:h2:mem:vagent_test;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_DELAY=-1
     username: sa

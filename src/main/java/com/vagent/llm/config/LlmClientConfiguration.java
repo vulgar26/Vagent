@@ -1,6 +1,7 @@
 package com.vagent.llm.config;
 
 import com.vagent.llm.LlmClient;
+import com.vagent.llm.impl.FakeStreamingLlmClient;
 import com.vagent.llm.impl.NoopLlmClient;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
@@ -31,5 +32,14 @@ public class LlmClientConfiguration {
     @ConditionalOnProperty(prefix = "vagent.llm", name = "provider", havingValue = "noop", matchIfMissing = true)
     LlmClient noopLlmClient() {
         return new NoopLlmClient();
+    }
+
+    /**
+     * 本地演示：按块输出最后一条用户消息，不调用外网。
+     */
+    @Bean
+    @ConditionalOnProperty(prefix = "vagent.llm", name = "provider", havingValue = "fake-stream")
+    LlmClient fakeStreamingLlmClient(LlmProperties llmProperties) {
+        return new FakeStreamingLlmClient(llmProperties);
     }
 }

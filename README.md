@@ -7,10 +7,12 @@
 | **M0** | Spring Boot 可运行骨架、Actuator、可替换 LLM 接口（`noop`） |
 | **M1** | 用户注册/登录（JWT）、会话 API；**PostgreSQL + MyBatis-Plus**；测试使用 H2（无需本机 PG） |
 | **M2** | **pgvector** 知识库、hash 嵌入占位、分块入库、向量检索 API（`/api/v1/kb/*`） |
+| **M3** | **SSE** 流式对话（会话维度）、**任务取消**；`LlmClient` 支持 `noop` / `fake-stream` |
 
 - [docs/M0-实现说明.md](docs/M0-实现说明.md)（含 LLM 模块流程图与表）
 - [docs/M1-实现说明.md](docs/M1-实现说明.md)（含 M1 各模块图与表）
 - [docs/M2-实现说明.md](docs/M2-实现说明.md)（M2：向量表、嵌入、KB API、测试说明）
+- [docs/M3-实现说明.md](docs/M3-实现说明.md)（M3：SSE、取消、`fake-stream`）
 - [docs/面试准备.md](docs/面试准备.md)（架构口述、追问答法；面试相关内容持续更新）
 
 ## 环境
@@ -70,6 +72,10 @@ mvn spring-boot:run
 - `POST /api/v1/conversations` — 可选 body：`{"title":"..."}`
 - `POST /api/v1/kb/documents` — `{"title":"...","content":"..."}`（需 Bearer）
 - `POST /api/v1/kb/retrieve` — `{"query":"...","topK":5}`（需 Bearer）
+- `POST /api/v1/conversations/{conversationId}/chat/stream` — `{"message":"..."}`，响应 **SSE**（`text/event-stream`）；首条 JSON 含 `taskId`
+- `POST /api/v1/chat/tasks/{taskId}/cancel` — 取消对应流式任务（204，任务不存在或无权则 404）
+
+流式演示可将 `vagent.llm.provider` 设为 **`fake-stream`**（本地按块回显用户消息，不调用外网）；默认 **`noop`** 无输出仅结束，适合测试。
 
 `application-pg.yml` 为可选 profile，用于覆盖数据源 URL（如 Docker 服务名）；默认连接已在 `application.yml` 中配置。
 
