@@ -1,4 +1,9 @@
 # test profile：H2 模拟 PostgreSQL，仅加载核心业务表（无 pgvector / CREATE EXTENSION）。
+# M4：集成测试不走向量检索，故关闭 RAG；否则会调用 kb_chunks 相关 Mapper 而缺表失败。
+vagent:
+  rag:
+    enabled: false
+
 spring:
   mvc:
     async:

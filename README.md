@@ -8,12 +8,29 @@
 | **M1** | 用户注册/登录（JWT）、会话 API；**PostgreSQL + MyBatis-Plus**；测试使用 H2（无需本机 PG） |
 | **M2** | **pgvector** 知识库、hash 嵌入占位、分块入库、向量检索 API（`/api/v1/kb/*`） |
 | **M3** | **SSE** 流式对话（会话维度）、**任务取消**；`LlmClient` 支持 `noop` / `fake-stream` |
+| **M4** | **`messages` 表**、**RAG 编排**（历史 + 检索 + SYSTEM）；`vagent.rag.*`；`meta.hitCount` |
+| **M5** | **改写**（透传 / 历史 USER 拼接检索 query）、**规则意图**（寒暄不经检索、过短澄清）；`meta.branch` |
+| **M6** | **单测补强**（任务注册表、SSE Bridge）、**DECISIONS**、可选 **Docker Compose**、文档收尾 |
 
+- [docs/DECISIONS.md](docs/DECISIONS.md)（与策划书 §3 / Ragent 主链路的差异说明，**必读**）
 - [docs/M0-实现说明.md](docs/M0-实现说明.md)（含 LLM 模块流程图与表）
 - [docs/M1-实现说明.md](docs/M1-实现说明.md)（含 M1 各模块图与表）
 - [docs/M2-实现说明.md](docs/M2-实现说明.md)（M2：向量表、嵌入、KB API、测试说明）
 - [docs/M3-实现说明.md](docs/M3-实现说明.md)（M3：SSE、取消、`fake-stream`）
+- [docs/M4-实现说明.md](docs/M4-实现说明.md)（M4：多轮消息、RAG、`vagent.rag`）
+- [docs/M5-实现说明.md](docs/M5-实现说明.md)（M5：改写、意图分支、`vagent.orchestration`）
+- [docs/M6-实现说明.md](docs/M6-实现说明.md)（M6：测试、DECISIONS、Compose）
 - [docs/面试准备.md](docs/面试准备.md)（架构口述、追问答法；面试相关内容持续更新）
+
+## 可选：Docker Compose（PostgreSQL + pgvector）
+
+若本机未装 PostgreSQL，可用仓库根目录 **`docker-compose.yml`** 启动与 `application.yml` 默认一致的库：
+
+```bash
+docker compose up -d
+```
+
+待健康检查通过后执行 `mvn spring-boot:run`（默认连接 `localhost:5432`）。首次需保证镜像能拉取 `pgvector/pgvector:pg16`。
 
 ## 环境
 
@@ -56,6 +73,14 @@ mvn test -Dtest=M2KnowledgeVectorIntegrationTest
 
 （默认 Surefire 已排除该类，避免首次拉取 `pgvector/pgvector` 镜像耗时过长。）
 
+补充单测：**`LlmStreamTaskRegistryTest`**、**`LlmSseStreamingBridgeTest`**（取消与 done 回调语义）；编排改写/意图见 **`com.vagent.orchestration`** 包内测试。
+
+## 最小演示（RAG + fake-stream）
+
+1. 启动 DB（本机 PG 或 `docker compose up -d`），`mvn spring-boot:run`。  
+2. `application.yml` 中设 `vagent.llm.provider: fake-stream`（可选，便于看到分块）。  
+3. `POST /api/v1/auth/register` → `POST /api/v1/conversations` → `POST /api/v1/kb/documents` 入库 → `POST .../chat/stream` 读 SSE（首包 `meta` 含 `taskId`、`branch`、`hitCount`）。
+
 ## 运行
 
 ```bash
@@ -72,7 +97,7 @@ mvn spring-boot:run
 - `POST /api/v1/conversations` — 可选 body：`{"title":"..."}`
 - `POST /api/v1/kb/documents` — `{"title":"...","content":"..."}`（需 Bearer）
 - `POST /api/v1/kb/retrieve` — `{"query":"...","topK":5}`（需 Bearer）
-- `POST /api/v1/conversations/{conversationId}/chat/stream` — `{"message":"..."}`，响应 **SSE**（`text/event-stream`）；首条 JSON 含 `taskId`
+- `POST /api/v1/conversations/{conversationId}/chat/stream` — `{"message":"..."}`，响应 **SSE**（`text/event-stream`）；首条 JSON 含 `taskId`；**M4** 起 RAG 模式含 **`hitCount`**；**M5** 起另含 **`branch`**（`RAG` / `SYSTEM_DIALOG` / `CLARIFICATION`）
 - `POST /api/v1/chat/tasks/{taskId}/cancel` — 取消对应流式任务（204，任务不存在或无权则 404）
 
 流式演示可将 `vagent.llm.provider` 设为 **`fake-stream`**（本地按块回显用户消息，不调用外网）；默认 **`noop`** 无输出仅结束，适合测试。

@@ -22,6 +22,12 @@ import org.springframework.boot.autoconfigure.security.servlet.UserDetailsServic
  * <p>
  * <b>M3 补充：</b> {@link com.vagent.chat} 提供 SSE 流式对话与任务取消；{@link com.vagent.llm.LlmClient} 仍按配置选择实现（{@code noop} / {@code fake-stream}）。
  * <p>
+ * <b>M4 补充：</b> {@code messages} 表与 {@link com.vagent.chat.RagStreamChatService}：在 {@code vagent.rag.enabled=true} 时拼多轮历史与知识检索；测试 profile 默认关闭 RAG（H2 无向量表）。
+ * <p>
+ * <b>M5 补充：</b> {@link com.vagent.orchestration} 提供检索前改写与规则意图（寒暄/澄清/RAG），配置见 {@code vagent.orchestration.*}。
+ * <p>
+ * <b>M6 补充：</b> 策划书要求的 {@code docs/DECISIONS.md}、SSE/任务注册表单测、可选 {@code docker-compose.yml}；详见 {@code docs/M6-实现说明.md}。
+ * <p>
  */
 @MapperScan("com.vagent")
 @SpringBootApplication(exclude = {UserDetailsServiceAutoConfiguration.class})

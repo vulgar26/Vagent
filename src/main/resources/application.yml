@@ -1,5 +1,5 @@
 # =============================================================================
-# Vagent 应用配置（M0：端口、LLM；M1：PostgreSQL + JWT；M2：pgvector；M3：SSE 流式）
+# Vagent 应用配置（M0–M5：至 RAG+messages+orchestration；详见各 docs/Mx-实现说明.md）
 # =============================================================================
 # 本地需先创建库与用户，并授权 schema public（见 README）；测试用 test profile + H2，不依赖本机 PG。
 
@@ -35,6 +35,19 @@ mybatis-plus:
     map-underscore-to-camel-case: true
 
 vagent:
+  # M5：检索前改写 + 规则意图（寒暄/澄清/RAG）；详见 docs/M5-实现说明.md
+  orchestration:
+    intent-enabled: true
+    rewrite-strategy: passthrough
+    concat-max-user-segments: 3
+    clarification-min-chars: 3
+    system-dialog-prefixes: "你好,嗨,hi,hello,谢谢,再见,在吗,早上好,晚安"
+    clarification-template: "您的描述较简短，请补充具体场景或关键词（例如涉及哪条流程、哪个系统），方便我准确回答。"
+  # M4：多轮 + 检索编排（测试 profile 默认关闭，因 H2 未加载向量表）
+  rag:
+    enabled: true
+    top-k: 5
+    max-history-messages: 20
   llm:
     # noop | fake-stream（本地分块演示，不调用外网）
     provider: noop

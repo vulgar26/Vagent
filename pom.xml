@@ -16,7 +16,7 @@
     <artifactId>vagent</artifactId>
     <version>0.1.0-SNAPSHOT</version>
     <name>Vagent</name>
-    <description>Enterprise-style conversational RAG (M0–M3: bootstrap, auth, KB+pgvector, SSE LLM)</description>
+    <description>Enterprise-style conversational RAG (M0–M6: bootstrap through RAG orchestration, tests, DECISIONS)</description>
 
     <properties>
         <java.version>17</java.version>

@@ -1,5 +1,8 @@
 package com.vagent.chat;
 
+import com.vagent.chat.rag.RagProperties;
+import com.vagent.orchestration.OrchestrationProperties;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
@@ -7,9 +10,11 @@ import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import java.util.concurrent.Executor;
 
 /**
- * 流式 LLM 在独立线程执行，避免阻塞 Servlet 线程。
+ * 流式 LLM 在独立线程执行，避免阻塞 Servlet 线程；并注册 {@link com.vagent.chat.rag.RagProperties}（M4）、
+ * {@link com.vagent.orchestration.OrchestrationProperties}（M5）。
  */
 @Configuration
+@EnableConfigurationProperties({RagProperties.class, OrchestrationProperties.class})
 public class ChatStreamingConfiguration {
 
     @Bean(name = "llmStreamExecutor")
