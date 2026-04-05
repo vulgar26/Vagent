@@ -2,6 +2,8 @@
 
 基于 Java 的企业风格对话式 RAG 系统（规划中）。
 
+**详细总览**（架构、包结构、主链路、数据与配置）：见 [docs/Vagent-项目介绍.md](docs/Vagent-项目介绍.md)。
+
 | 阶段 | 内容 |
 |------|------|
 | **M0** | Spring Boot 可运行骨架、Actuator、可替换 LLM 接口（`noop`） |
@@ -12,6 +14,7 @@
 | **M5** | **改写**（透传 / 历史 USER 拼接检索 query）、**规则意图**（寒暄不经检索、过短澄清）；`meta.branch` |
 | **M6** | **单测补强**（任务注册表、SSE Bridge）、**DECISIONS**、可选 **Docker Compose**、文档收尾 |
 
+- [docs/Vagent-项目介绍.md](docs/Vagent-项目介绍.md)（**项目详细介绍**：定位、模块、主链路、数据、API、配置）
 - [docs/DECISIONS.md](docs/DECISIONS.md)（与策划书 §3 / Ragent 主链路的差异说明，**必读**）
 - [docs/M0-实现说明.md](docs/M0-实现说明.md)（含 LLM 模块流程图与表）
 - [docs/M1-实现说明.md](docs/M1-实现说明.md)（含 M1 各模块图与表）
