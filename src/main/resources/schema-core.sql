@@ -1,6 +1,5 @@
--- PostgreSQL DDL（本地开发）；test profile 下 H2 使用 MODE=PostgreSQL 执行同一脚本。
--- 主键为 CHAR(36) UUID 字符串，由 MyBatis-Plus IdType.ASSIGN_UUID 写入。
--- M2 接 pgvector 时在同一库执行：CREATE EXTENSION IF NOT EXISTS vector;
+-- 核心业务表（与 H2 PostgreSQL 模式兼容，供 test profile 仅加载本文件）。
+-- 主键 CHAR(36)，MyBatis-Plus ASSIGN_UUID。
 
 CREATE TABLE IF NOT EXISTS users (
     id CHAR(36) NOT NULL PRIMARY KEY,

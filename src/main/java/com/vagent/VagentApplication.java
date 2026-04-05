@@ -18,6 +18,8 @@ import org.springframework.boot.autoconfigure.security.servlet.UserDetailsServic
  * <b>M1 补充：</b> {@link MapperScan} 扫描 {@code com.vagent} 包下的 {@code *Mapper} 接口；
  * 排除 {@link UserDetailsServiceAutoConfiguration}，认证走 JWT + {@link com.vagent.security.JwtAuthenticationFilter}。
  * <p>
+ * <b>M2 补充：</b> 知识库（pgvector）与 {@link com.vagent.embedding.EmbeddingClient} 由配置装配；测试 profile 仅加载 {@code schema-core.sql}，向量表用 Testcontainers 集成测试覆盖。
+ * <p>
  */
 @MapperScan("com.vagent")
 @SpringBootApplication(exclude = {UserDetailsServiceAutoConfiguration.class})

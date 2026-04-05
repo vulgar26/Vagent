@@ -21,7 +21,7 @@ public class LlmProperties {
     /**
      * 选用哪一种 {@link com.vagent.llm.LlmClient} 实现。
      * <ul>
-     *   <li>{@code noop}：空实现，不调外部接口，用于 M0 或本地无密钥时的占位</li>
+     *   <li>{@code noop}：空实现，不调外部接口, 用于本地无密钥时的占位</li>
      *   <li>后续可增 {@code dashscope}、{@code openai-compatible} 等，与新增实现类一一对应</li>
      * </ul>
      */

@@ -38,3 +38,6 @@ build/
 ### JVM crash logs ###
 hs_err_pid*.log
 replay_pid*.log
+
+# 本地拆分提交临时目录（勿提交）
+.git-m3-stash/

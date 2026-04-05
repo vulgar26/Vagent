@@ -1,4 +1,4 @@
-# test profile：H2 模拟 PostgreSQL，执行与主工程相同的 schema.sql，无需本机 PostgreSQL。
+# test profile：H2 模拟 PostgreSQL，仅加载核心业务表（无 pgvector / CREATE EXTENSION）。
 spring:
   datasource:
     url: jdbc:h2:mem:vagent_test;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_DELAY=-1
@@ -8,4 +8,4 @@ spring:
   sql:
     init:
       mode: always
-      schema-locations: classpath:schema.sql
+      schema-locations: classpath:schema-core.sql
