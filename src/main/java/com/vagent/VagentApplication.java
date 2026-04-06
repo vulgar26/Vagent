@@ -30,6 +30,8 @@ import org.springframework.boot.autoconfigure.security.servlet.UserDetailsServic
  * <p>
  * <b>U1 补充：</b> {@code vagent.llm.provider=dashscope} 时接入通义千问 OpenAI 兼容流式，见 {@code com.vagent.llm.impl.DashScopeCompatibleStreamingLlmClient} 与 {@code docs/U1-实现说明.md}。
  * <p>
+ * <b>U2 补充：</b> {@code vagent.embedding.provider=dashscope} 时接入兼容模式嵌入；默认向量维 1024，见 {@code com.vagent.embedding.DashScopeEmbeddingClient} 与 {@code docs/U2-实现说明.md}。
+ * <p>
  */
 @MapperScan("com.vagent")
 @SpringBootApplication(exclude = {UserDetailsServiceAutoConfiguration.class})

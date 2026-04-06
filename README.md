@@ -16,6 +16,7 @@
 | **M5** | **改写**（透传 / 历史 USER 拼接检索 query）、**规则意图**（寒暄不经检索、过短澄清）；`meta.branch` |
 | **M6** | **单测补强**（任务注册表、SSE Bridge）、**DECISIONS**、可选 **Docker Compose**、文档收尾 |
 | **U1** | **通义千问**（`dashscope`）：OpenAI 兼容流式 Chat Completions；`vagent.llm.dashscope.*` |
+| **U2** | **通义千问嵌入**（`embedding.provider=dashscope`）；**向量 1024 维**；`vagent.embedding.dashscope.*` |
 
 - [docs/Vagent-项目介绍.md](docs/Vagent-项目介绍.md)（**项目详细介绍**：定位、模块、主链路、数据、API、配置）
 - [docs/Vagent-项目策划书.md](docs/Vagent-项目策划书.md)（立项与 §3 主链路规格）
@@ -29,6 +30,7 @@
 - [docs/M5-实现说明.md](docs/M5-实现说明.md)（M5：改写、意图分支、`vagent.orchestration`）
 - [docs/M6-实现说明.md](docs/M6-实现说明.md)（M6：测试、DECISIONS、Compose）
 - [docs/U1-实现说明.md](docs/U1-实现说明.md)（U1：通义千问 DashScope 流式、`provider=dashscope`）
+- [docs/U2-实现说明.md](docs/U2-实现说明.md)（U2：DashScope 嵌入、`vector(1024)`、迁移说明）
 - [docs/面试准备.md](docs/面试准备.md)（架构口述、追问答法；面试相关内容持续更新）
 
 ## 可选：Docker Compose（PostgreSQL + pgvector）
@@ -53,6 +55,13 @@ docker compose up -d
 
 详见 [docs/U1-实现说明.md](docs/U1-实现说明.md) 与 [docs/Vagent-升级策划书.md](docs/Vagent-升级策划书.md)。
 
+### 通义千问嵌入（U2）
+
+1. 与 U1 相同，使用 `DASHSCOPE_API_KEY`（可在 yml 中配置 `vagent.embedding.dashscope.api-key`）。  
+2. 设置 `vagent.embedding.provider: dashscope`，`dimensions` 保持 **1024**（与 DDL 一致）。  
+3. **若库表仍为旧版 `vector(128)`**，须按 [docs/U2-实现说明.md](docs/U2-实现说明.md) 做表重建或迁移后再入库。  
+4. 开发期可继续用 **`provider: hash`** 仅测检索链路，不配 Key。
+
 ## 环境
 
 - JDK 17+
@@ -76,7 +85,7 @@ ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO vagent;
 
 启动应用时会依次执行 `src/main/resources/schema-core.sql`、`schema-vector.sql`（`spring.sql.init.mode=always`）；**生产建议改为迁移工具并关闭 always**。
 
-**M2**：`schema-vector.sql` 内含 `CREATE EXTENSION IF NOT EXISTS vector` 与 `kb_*` 表；向量维度默认 **128**，与 `vagent.embedding.dimensions` 及表中 `vector(128)` 须一致。
+**M2 / U2**：`schema-vector.sql` 内含 `CREATE EXTENSION IF NOT EXISTS vector` 与 `kb_*` 表；向量维度默认 **1024**，与 `vagent.embedding.dimensions`、`KbChunkMapper` 中 `vector(1024)` 须一致（从旧版 128 升级须见 [U2-实现说明.md](docs/U2-实现说明.md)）。
 
 ## 构建与测试
 

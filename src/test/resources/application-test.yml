@@ -3,6 +3,9 @@
 vagent:
   llm:
     provider: noop
+  embedding:
+    provider: hash
+    dimensions: 1024
   rag:
     enabled: false
 

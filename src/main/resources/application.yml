@@ -18,9 +18,9 @@ management:
 
 spring:
   datasource:
-    url: jdbc:postgresql://localhost:5432/vagent
-    username: vagent
-    password: vagent
+    url: jdbc:postgresql://127.0.0.1:5432/ragent
+    username: postgres
+    password: postgres
     driver-class-name: org.postgresql.Driver
   sql:
     init:
@@ -58,11 +58,15 @@ vagent:
     dashscope:
       base-url: https://dashscope.aliyuncs.com/compatible-mode/v1
       api-key: ${DASHSCOPE_API_KEY:}
-      chat-model: qwen-turbo
-  # 嵌入维度须与 schema-vector.sql 中 vector(N) 一致；hash 为可复现占位实现
+      chat-model: qwen3.5-plus
+  # 嵌入维度须与 schema-vector.sql 中 vector(N)、KbChunkMapper 中 CAST 一致；U2 默认 1024（text-embedding-v3）
   embedding:
     provider: hash
-    dimensions: 128
+    dimensions: 1024
+    dashscope:
+      base-url: https://dashscope.aliyuncs.com/compatible-mode/v1
+      api-key: ${DASHSCOPE_API_KEY:}
+      model: text-embedding-v3
     chunk-max-chars: 512
     chunk-overlap: 64
   security:

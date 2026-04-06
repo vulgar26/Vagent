@@ -55,14 +55,11 @@
 | `vagent.llm.dashscope.api-key` | **引用** `DASHSCOPE_API_KEY` 或 `${DASHSCOPE_API_KEY}` |
 | `vagent.llm.dashscope.chat-model` | 如 `qwen-turbo`、`qwen-plus` 等（以控制台可用名为准） |
 
-### 3.3 嵌入维度（待你确认）
+### 3.3 嵌入维度（已落地 U2）
 
-当前仓库 `schema-vector.sql` 一般为 **`vector(128)`**（与 `HashEmbeddingClient` 一致）。若使用千问 **text-embedding-v3** 等模型，**输出维度可能不是 128**，需要二选一：
+**结论**：默认采用 **`text-embedding-v3` + `dimensions=1024`**，与 `kb_chunks.embedding vector(1024)`、`vagent.embedding.dimensions` 对齐；请求体显式传 `dimensions`，避免与模型默认不一致。
 
-- **改表与配置**：按所选 embedding 模型维度调整 `kb_chunks` 向量列，并做数据迁移或清空重建；或  
-- **降维 / 映射**：工程复杂度更高，一般不如直接统一维度。
-
-**建议**：在升级策划的 **U2** 立项时，先查官方文档确认目标模型的 **`dimensions` 参数与默认值**，再定 DDL。
+若将来改为其他维度，须同步修改 **`schema-vector.sql`、`KbChunkMapper` 中 `CAST(... AS vector(N))`**、配置并重嵌入（见 [U2-实现说明.md](U2-实现说明.md)）。
 
 ### 3.4 流式与取消
 
@@ -76,7 +73,7 @@
 | Ragent 能力 | Vagent 当前（M6） | 建议升级阶段 | 备注 |
 |-------------|-------------------|--------------|------|
 | 真实 LLM 流式 | `noop` / `fake-stream` | **U1** | 千问兼容客户端 |
-| 真实 Embedding | Hash 占位 | **U2**（可选） | 维度与表结构联动 |
+| 真实 Embedding | 默认仍可选 `hash`；**U2** 已实现 `dashscope` | **U2** | `vector(1024)` + [U2-实现说明.md](U2-实现说明.md) |
 | 空检索不调 LLM | 仍调 LLM（见 DECISIONS） | **U3** | 配置开关 `empty-hits-behavior` |
 | 多通道检索 + 后处理 | 单路 pgvector | **U4** | 条件触发第二路召回等，简化版即可 |
 | 模型路由 / 健康度 / 首包 | 无 | **U5**（可选） | 对齐 `infra-ai` 思想，非单应用必需 |
@@ -103,14 +100,16 @@
 
 ### U2：千问嵌入 + 向量表一致（推荐）
 
+**状态（实现）**：已完成，见 `DashScopeEmbeddingClient`、`EmbeddingDashScopeProperties`、`vector(1024)` DDL、[U2-实现说明.md](U2-实现说明.md)。
+
 **交付物**
 
 - `EmbeddingClient` 新实现；入库与检索走同一模型与维度。  
-- 迁移脚本或一次性 DDL 变更说明（若维度变化）。
+- DDL 与 `KbChunkMapper` 同步为 1024；文档说明从 128 升级的破坏性变更。
 
 **验收**
 
-- `M2KnowledgeVectorIntegrationTest` 或同类用例在 **Testcontainers PG+vector** 下可跑（可选 U2 末再做）。
+- `M2KnowledgeVectorIntegrationTest` 在 **Testcontainers PG+vector** 下使用 **hash + 1024 维** 可跑；启用 `dashscope` 时需 Key 与网络。
 
 ### U3：对齐策划书 §3「空检索」行为（可选但推荐）
 

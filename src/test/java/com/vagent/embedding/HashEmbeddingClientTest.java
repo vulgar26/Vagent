@@ -11,12 +11,12 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class HashEmbeddingClientTest {
 
     @Test
-    void embedIsNormalized128Dim() {
+    void embedIsNormalizedAndMatchesConfiguredDimensions() {
         EmbeddingProperties p = new EmbeddingProperties();
-        p.setDimensions(128);
+        p.setDimensions(1024);
         HashEmbeddingClient client = new HashEmbeddingClient(p);
         float[] v = client.embed("hello");
-        assertEquals(128, v.length);
+        assertEquals(1024, v.length);
         double sum = 0;
         for (float f : v) {
             sum += (double) f * f;

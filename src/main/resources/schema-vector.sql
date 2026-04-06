@@ -10,14 +10,14 @@ CREATE TABLE IF NOT EXISTS kb_documents (
     created_at TIMESTAMP(6) NOT NULL
 );
 
--- 维度与 vagent.embedding.dimensions 一致（默认 128）；检索与入库使用同一度量（余弦 <=>）。
+-- 维度与 vagent.embedding.dimensions 一致（U2 默认 1024）；检索与入库使用同一度量（余弦 <=>）。
 CREATE TABLE IF NOT EXISTS kb_chunks (
     id CHAR(36) NOT NULL PRIMARY KEY,
     document_id CHAR(36) NOT NULL REFERENCES kb_documents (id) ON DELETE CASCADE,
     user_id CHAR(36) NOT NULL REFERENCES users (id),
     chunk_index INT NOT NULL,
     content TEXT NOT NULL,
-    embedding vector(128) NOT NULL
+    embedding vector(1024) NOT NULL
 );
 
 CREATE INDEX IF NOT EXISTS idx_kb_chunks_user_id ON kb_chunks (user_id);
