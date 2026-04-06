@@ -4,6 +4,8 @@
 
 **详细总览**（架构、包结构、主链路、数据与配置）：见 [docs/Vagent-项目介绍.md](docs/Vagent-项目介绍.md)。
 
+**M6 之后：对齐 Ragent 的升级路线**（通义千问 API、分阶段里程碑、与 Ragent 能力对照）：见 **[docs/Vagent-升级策划书.md](docs/Vagent-升级策划书.md)**。
+
 | 阶段 | 内容 |
 |------|------|
 | **M0** | Spring Boot 可运行骨架、Actuator、可替换 LLM 接口（`noop`） |
@@ -15,6 +17,8 @@
 | **M6** | **单测补强**（任务注册表、SSE Bridge）、**DECISIONS**、可选 **Docker Compose**、文档收尾 |
 
 - [docs/Vagent-项目介绍.md](docs/Vagent-项目介绍.md)（**项目详细介绍**：定位、模块、主链路、数据、API、配置）
+- [docs/Vagent-项目策划书.md](docs/Vagent-项目策划书.md)（立项与 §3 主链路规格）
+- [docs/Vagent-升级策划书.md](docs/Vagent-升级策划书.md)（**M6 后**：对齐 Ragent、**通义千问**、U1–U6 阶段）
 - [docs/DECISIONS.md](docs/DECISIONS.md)（与策划书 §3 / Ragent 主链路的差异说明，**必读**）
 - [docs/M0-实现说明.md](docs/M0-实现说明.md)（含 LLM 模块流程图与表）
 - [docs/M1-实现说明.md](docs/M1-实现说明.md)（含 M1 各模块图与表）
