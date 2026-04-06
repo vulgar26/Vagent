@@ -74,7 +74,7 @@
 |-------------|-------------------|--------------|------|
 | 真实 LLM 流式 | `noop` / `fake-stream` | **U1** | 千问兼容客户端 |
 | 真实 Embedding | 默认仍可选 `hash`；**U2** 已实现 `dashscope` | **U2** | `vector(1024)` + [U2-实现说明.md](U2-实现说明.md) |
-| 空检索不调 LLM | 仍调 LLM（见 DECISIONS） | **U3** | 配置开关 `empty-hits-behavior` |
+| 空检索不调 LLM | **U3** 起可 `no-llm`；默认 `allow-llm`（见 DECISIONS） | **U3** | [U3-实现说明.md](U3-实现说明.md) |
 | 多通道检索 + 后处理 | 单路 pgvector | **U4** | 条件触发第二路召回等，简化版即可 |
 | 模型路由 / 健康度 / 首包 | 无 | **U5**（可选） | 对齐 `infra-ai` 思想，非单应用必需 |
 | MCP 工具 | 无 | **U6**（远期） | 独立进程或进程内注册表 |
@@ -113,11 +113,17 @@
 
 ### U3：对齐策划书 §3「空检索」行为（可选但推荐）
 
+**状态（实现）**：已完成，见 `RagProperties#emptyHitsBehavior`、`RagStreamChatService` 中 U3 分支、[U3-实现说明.md](U3-实现说明.md)。
+
 **交付物**
 
-- 配置项：如 `vagent.rag.empty-hits-behavior: no-llm | allow-llm`（命名可再定）。  
+- 配置项：`vagent.rag.empty-hits-behavior: no-llm | allow-llm`（默认 `allow-llm`）；可选 `empty-hits-no-llm-message`。  
 - `no-llm`：固定提示 + SSE `done`，与 Ragent / §3 一致。  
 - 更新 `DECISIONS.md` 对应行。
+
+**验收**
+
+- `RagPropertiesEmptyHitsBehaviorTest` 校验 `no-llm` / `allow-llm` 绑定；`allow-llm` 为默认兼容旧版。
 
 ### U4：可观测与工程化
 

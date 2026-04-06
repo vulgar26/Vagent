@@ -17,6 +17,7 @@
 | **M6** | **单测补强**（任务注册表、SSE Bridge）、**DECISIONS**、可选 **Docker Compose**、文档收尾 |
 | **U1** | **通义千问**（`dashscope`）：OpenAI 兼容流式 Chat Completions；`vagent.llm.dashscope.*` |
 | **U2** | **通义千问嵌入**（`embedding.provider=dashscope`）；**向量 1024 维**；`vagent.embedding.dashscope.*` |
+| **U3** | **空检索策略**（`vagent.rag.empty-hits-behavior`：`no-llm` / `allow-llm` 默认） |
 
 - [docs/Vagent-项目介绍.md](docs/Vagent-项目介绍.md)（**项目详细介绍**：定位、模块、主链路、数据、API、配置）
 - [docs/Vagent-项目策划书.md](docs/Vagent-项目策划书.md)（立项与 §3 主链路规格）
@@ -31,6 +32,7 @@
 - [docs/M6-实现说明.md](docs/M6-实现说明.md)（M6：测试、DECISIONS、Compose）
 - [docs/U1-实现说明.md](docs/U1-实现说明.md)（U1：通义千问 DashScope 流式、`provider=dashscope`）
 - [docs/U2-实现说明.md](docs/U2-实现说明.md)（U2：DashScope 嵌入、`vector(1024)`、迁移说明）
+- [docs/U3-实现说明.md](docs/U3-实现说明.md)（U3：空检索是否调 LLM、`empty-hits-behavior`）
 - [docs/面试准备.md](docs/面试准备.md)（架构口述、追问答法；面试相关内容持续更新）
 
 ## 可选：Docker Compose（PostgreSQL + pgvector）
@@ -61,6 +63,12 @@ docker compose up -d
 2. 设置 `vagent.embedding.provider: dashscope`，`dimensions` 保持 **1024**（与 DDL 一致）。  
 3. **若库表仍为旧版 `vector(128)`**，须按 [docs/U2-实现说明.md](docs/U2-实现说明.md) 做表重建或迁移后再入库。  
 4. 开发期可继续用 **`provider: hash`** 仅测检索链路，不配 Key。
+
+### 空检索（U3）
+
+- `vagent.rag.empty-hits-behavior: no-llm`：RAG 分支检索 **0 条**时不调 LLM，只推送固定文案并 `done`（对齐策划书 §3）。  
+- 默认 **`allow-llm`**：与旧版一致，未命中时仍调 LLM（见 [DECISIONS.md](docs/DECISIONS.md)）。  
+- 详见 [docs/U3-实现说明.md](docs/U3-实现说明.md)。
 
 ## 环境
 

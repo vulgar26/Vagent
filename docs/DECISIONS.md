@@ -10,7 +10,7 @@
 |------------------|-----------------|-------------|
 | 真实 LLM 流式 | 默认 `noop` / `fake-stream`；**U1** 起可选 **`vagent.llm.provider=dashscope`**（通义千问兼容模式），见 [U1-实现说明.md](U1-实现说明.md) | 无密钥环境可启动；有 Key 时走真实 HTTP 流式。 |
 | 真实 Embedding | 默认 `hash`；**U2** 起可选 **`vagent.embedding.provider=dashscope`**，向量默认 **1024 维**，见 [U2-实现说明.md](U2-实现说明.md) | 与 `vector(1024)` DDL 绑定；改维度须迁移并重嵌入。 |
-| 检索为空时固定提示后结束，**不再调用大模型** | 检索为空时仍构造含「未命中说明」的 SYSTEM，**继续调用** `LlmClient` | 降低首版分支复杂度；便于依赖历史与常识作答。可通过配置开关在后续版本对齐 §3。 |
+| 检索为空时固定提示后结束，**不再调用大模型** | **U3** 起可选 **`vagent.rag.empty-hits-behavior=no-llm`**（不调 `LlmClient`，固定文案 + SSE `done`）；默认 **`allow-llm`** 仍为旧行为（未命中说明 + 继续调用 LLM），见 [U3-实现说明.md](U3-实现说明.md) | 产品可选对齐 §3 或保留常识作答。 |
 | 检索引擎聚合 KB + MCP 等 | 仅 **pgvector + `KnowledgeRetrieveService`** | MVP 单通道；工具协议进 Backlog。 |
 | 子问题拆分、多路检索合并 | **单 query**（经 M5 改写可为拼接文本） | 后续可扩展 `RewriteResult` 与子检索循环。 |
 
@@ -49,3 +49,4 @@
 | 日期 | 说明 |
 |------|------|
 | 2026-04 | 初稿，对应 M6 文档交付 |
+| 2026-04 | U3：`empty-hits-behavior` 可对齐 §3「空检索不调 LLM」 |

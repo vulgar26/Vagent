@@ -1,5 +1,5 @@
 # =============================================================================
-# Vagent 应用配置（M0–M5 + U1 千问；详见 docs/Mx-实现说明.md、docs/U1-实现说明.md）
+# Vagent 应用配置（M0–M5 + U1/U2/U3；详见 docs/Mx-实现说明.md、docs/U1-实现说明.md 等）
 # =============================================================================
 # 本地需先创建库与用户，并授权 schema public（见 README）；测试用 test profile + H2，不依赖本机 PG。
 
@@ -48,6 +48,9 @@ vagent:
     enabled: true
     top-k: 5
     max-history-messages: 20
+    # U3：RAG 分支检索无命中时 no-llm=不调 LLM（固定文案+done）；allow-llm=仍调 LLM（与旧版一致）
+    empty-hits-behavior: allow-llm
+    # empty-hits-no-llm-message: 自定义 no-llm 时推送的固定全文（可选）
   llm:
     # noop | fake-stream | dashscope（通义千问兼容模式，需密钥）
     provider: noop

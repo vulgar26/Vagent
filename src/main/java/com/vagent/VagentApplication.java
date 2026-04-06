@@ -32,6 +32,8 @@ import org.springframework.boot.autoconfigure.security.servlet.UserDetailsServic
  * <p>
  * <b>U2 补充：</b> {@code vagent.embedding.provider=dashscope} 时接入兼容模式嵌入；默认向量维 1024，见 {@code com.vagent.embedding.DashScopeEmbeddingClient} 与 {@code docs/U2-实现说明.md}。
  * <p>
+ * <b>U3 补充：</b> {@code vagent.rag.empty-hits-behavior} 控制 RAG 无命中时是否仍调用 LLM，见 {@code com.vagent.chat.RagStreamChatService} 与 {@code docs/U3-实现说明.md}。
+ * <p>
  */
 @MapperScan("com.vagent")
 @SpringBootApplication(exclude = {UserDetailsServiceAutoConfiguration.class})

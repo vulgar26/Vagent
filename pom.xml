@@ -16,7 +16,7 @@
     <artifactId>vagent</artifactId>
     <version>0.1.0-SNAPSHOT</version>
     <name>Vagent</name>
-    <description>Enterprise-style conversational RAG (M0–M6 + U1/U2 DashScope chat + embeddings 1024d)</description>
+    <description>Enterprise-style conversational RAG (M0–M6 + U1/U2 DashScope chat + embeddings 1024d + U3 empty-hits)</description>
 
     <properties>
         <java.version>17</java.version>

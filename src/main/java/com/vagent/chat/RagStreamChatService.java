@@ -2,6 +2,7 @@ package com.vagent.chat;
 
 import com.vagent.chat.message.Message;
 import com.vagent.chat.message.MessageService;
+import com.vagent.chat.rag.EmptyHitsBehavior;
 import com.vagent.chat.rag.RagProperties;
 import com.vagent.conversation.ConversationService;
 import com.vagent.kb.KnowledgeRetrieveService;
@@ -40,7 +41,7 @@ import static org.springframework.http.HttpStatus.NOT_FOUND;
  *   <li>落库用户句之后：先做 {@link QueryRewriteService#rewriteForRetrieval}，得到检索专用 query（可与用户原句不同，例如拼接历史 USER）。</li>
  *   <li>若 {@link OrchestrationProperties#isIntentEnabled()}：{@link IntentResolutionService#resolve} 决定分支；
  *       {@link ChatBranch#CLARIFICATION} 时不检索、不调主 LLM，仅流式输出引导文案；{@link ChatBranch#SYSTEM_DIALOG} 时不检索但仍调 LLM；
- *       {@link ChatBranch#RAG} 与原先 M4 一致（检索 query 使用改写结果）。</li>
+ *       {@link ChatBranch#RAG} 与原先 M4 一致（检索 query 使用改写结果）；<b>U3</b> 若检索 0 条且 {@code empty-hits-behavior=no-llm}，不调 {@link com.vagent.llm.LlmClient}。</li>
  * </ul>
  */
 @Service
@@ -118,7 +119,15 @@ public class RagStreamChatService {
                             ? intent.optionalClarificationHint().get()
                             : orchestrationProperties.getClarificationTemplate();
             llmStreamExecutor.execute(
-                    () -> runGuidanceStream(emitter, taskId, guidance, conversationId, userCompact));
+                    () ->
+                            runFixedAssistantStream(
+                                    emitter,
+                                    taskId,
+                                    conversationId,
+                                    userCompact,
+                                    guidance != null ? guidance : "",
+                                    ChatBranch.CLARIFICATION.name(),
+                                    0));
             return emitter;
         }
 
@@ -131,6 +140,15 @@ public class RagStreamChatService {
             hits =
                     knowledgeRetrieveService.search(
                             userId, rewrite.retrievalQuery(), ragProperties.getTopK());
+            if (branch == ChatBranch.RAG
+                    && hits.isEmpty()
+                    && ragProperties.getEmptyHitsBehavior() == EmptyHitsBehavior.NO_LLM) {
+                llmStreamExecutor.execute(
+                        () ->
+                                runEmptyHitsNoLlmStream(
+                                        emitter, taskId, conversationId, userCompact));
+                return emitter;
+            }
             systemText = buildKnowledgeSystemPrompt(hits);
         }
 
@@ -170,25 +188,47 @@ public class RagStreamChatService {
     }
 
     /**
-     * 澄清分支：不经过 {@link com.vagent.llm.LlmClient}，直接推送一段固定文案并完成 SSE，同时落库 ASSISTANT。
+     * U3：RAG 分支检索无命中且配置为 {@link EmptyHitsBehavior#NO_LLM} 时，不调 {@link com.vagent.llm.LlmClient}，
+     * 与澄清分支同属「固定文案 + done」。
      */
-    private void runGuidanceStream(
+    private void runEmptyHitsNoLlmStream(
+            SseEmitter emitter, String taskId, String conversationId, String userCompact) {
+        String text = ragProperties.getEmptyHitsNoLlmMessage();
+        runFixedAssistantStream(
+                emitter,
+                taskId,
+                conversationId,
+                userCompact,
+                text != null ? text : "",
+                ChatBranch.RAG.name(),
+                0);
+    }
+
+    /**
+     * 澄清分支与 U3 空命中：不经过 {@link com.vagent.llm.LlmClient}，推送固定文案并完成 SSE，同时落库 ASSISTANT。
+     * <p>
+     * 流程：meta → chunk → done。
+     *
+     * @param hitCount meta 中的 hitCount（澄清与空命中为 0）
+     */
+    private void runFixedAssistantStream(
             SseEmitter emitter,
             String taskId,
-            String guidanceText,
             String conversationId,
-            String userCompact) {
+            String userCompact,
+            String fullText,
+            String branchName,
+            int hitCount) {
         try {
-            sendMeta(emitter, taskId, 0, ChatBranch.CLARIFICATION.name());
+            sendMeta(emitter, taskId, hitCount, branchName);
             if (taskRegistry.isCancelled(taskId)) {
                 sendEvent(emitter, Map.of("type", "cancelled"));
                 emitter.complete();
                 return;
             }
-            sendEvent(emitter, Map.of("type", "chunk", "text", guidanceText != null ? guidanceText : ""));
+            sendEvent(emitter, Map.of("type", "chunk", "text", fullText));
             sendEvent(emitter, Map.of("type", "done"));
-            messageService.saveAssistantMessage(
-                    conversationId, userCompact, guidanceText != null ? guidanceText : "");
+            messageService.saveAssistantMessage(conversationId, userCompact, fullText);
             emitter.complete();
         } catch (Exception e) {
             emitter.completeWithError(e);

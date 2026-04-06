@@ -61,8 +61,8 @@
 5. **意图（M5，可关）**：  
    - **CLARIFICATION**：不调检索、不调 `LlmClient`，SSE 推送固定引导文案并落库 **ASSISTANT**。  
    - **SYSTEM_DIALOG**：不调检索，专用 SYSTEM + 历史 + 本轮，仍走 `LlmClient`。  
-   - **RAG**：用 **`retrievalQuery`** 做向量检索，将命中片段写入 **SYSTEM**，再拼 **历史 + 本轮 USER**，走 `LlmClient`。  
-6. **任务与 SSE**：注册 `taskId`，`SseEmitter` 返回客户端；在**线程池**中先发 **`meta`**（含 `taskId`、`hitCount`、`branch`），再通过 **`LlmSseStreamingBridge`** 将模型流映射为 **`chunk`**，正常结束时 **`done`** 并**回调**写入 **ASSISTANT**。  
+   - **RAG**：用 **`retrievalQuery`** 做向量检索。若 **0 条**且 **`vagent.rag.empty-hits-behavior=no-llm`**（U3），不调 `LlmClient`，仅推送固定 **`chunk`** 与 **`done`** 并落库 **ASSISTANT**；否则（含默认 **`allow-llm`**）将命中片段或「未命中」说明写入 **SYSTEM**，再拼 **历史 + 本轮 USER**，走 `LlmClient`。  
+6. **任务与 SSE**：注册 `taskId`，`SseEmitter` 返回客户端；在**线程池**中先发 **`meta`**（含 `taskId`、`hitCount`、`branch`），再走 **`LlmSseStreamingBridge`** 将模型流映射为 **`chunk`**（U3 空命中 `no-llm` 路径不经 Bridge），正常结束时 **`done`** 并**回调**写入 **ASSISTANT**。  
 7. **取消**：`POST .../chat/tasks/{taskId}/cancel` 校验属主后标记取消；Bridge 与 `LlmChatRequest` 上的取消语义结合，通常不再执行「成功落助手」的回调。
 
 **要点**：**SYSTEM（含知识或寒暄/未命中说明）不落 `messages` 表**；表里只持久化双方**真实发言**（USER/ASSISTANT）。
@@ -102,7 +102,7 @@ DDL 入口：`src/main/resources/schema-core.sql`（核心业务）、`schema-ve
 
 | 前缀 | 作用 |
 |------|------|
-| `vagent.rag.*` | 是否启用 RAG 主链路、检索 topK、历史条数上限等 |
+| `vagent.rag.*` | 是否启用 RAG、检索 topK、历史条数上限；**U3** `empty-hits-behavior` / `empty-hits-no-llm-message` |
 | `vagent.orchestration.*` | 意图开关、改写策略、寒暄前缀、澄清模板等（M5） |
 | `vagent.llm.*` | 模型提供方（`noop` / `fake-stream` / **`dashscope`**）、默认模型名、假流式参数 |
 | `vagent.llm.dashscope.*` | U1：兼容模式基址、API Key、对话模型（仅 `provider=dashscope` 时生效） |
@@ -137,12 +137,14 @@ DDL 入口：`src/main/resources/schema-core.sql`（核心业务）、`schema-ve
 
 **U2（升级）**：通义千问兼容嵌入、**1024** 维向量表，见 [U2-实现说明.md](U2-实现说明.md)。
 
+**U3（升级）**：空检索是否调 LLM（`empty-hits-behavior`），见 [U3-实现说明.md](U3-实现说明.md)。
+
 ---
 
 ## 10. 后续可演进方向（非承诺）
 
 - 真实厂商 **流式 HTTP** `LlmClient`、密钥与超时配置化。  
-- 策划书 §3：**空检索不调 LLM** 等分支用配置开关对齐。  
+- 多路检索、Trace 落库、MCP 工具等（见 [Vagent-升级策划书.md](Vagent-升级策划书.md) U4+）。  
 - **LLM 改写 / 子问题拆分** 替换当前规则实现。  
 - 请求追踪、各阶段耗时指标（Micrometer / Trace）。  
 - Flyway/Liquibase 替代 `spring.sql.init.mode=always`。
