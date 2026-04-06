@@ -17,6 +17,8 @@ import com.vagent.orchestration.model.ChatBranch;
 import com.vagent.orchestration.model.IntentResult;
 import com.vagent.orchestration.model.RewriteResult;
 import com.vagent.user.UserIdFormats;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
@@ -41,11 +43,14 @@ import static org.springframework.http.HttpStatus.NOT_FOUND;
  *   <li>落库用户句之后：先做 {@link QueryRewriteService#rewriteForRetrieval}，得到检索专用 query（可与用户原句不同，例如拼接历史 USER）。</li>
  *   <li>若 {@link OrchestrationProperties#isIntentEnabled()}：{@link IntentResolutionService#resolve} 决定分支；
  *       {@link ChatBranch#CLARIFICATION} 时不检索、不调主 LLM，仅流式输出引导文案；{@link ChatBranch#SYSTEM_DIALOG} 时不检索但仍调 LLM；
- *       {@link ChatBranch#RAG} 与原先 M4 一致（检索 query 使用改写结果）；<b>U3</b> 若检索 0 条且 {@code empty-hits-behavior=no-llm}，不调 {@link com.vagent.llm.LlmClient}。</li>
+ *       {@link ChatBranch#RAG} 与原先 M4 一致（检索 query 使用改写结果）；<b>U3</b> 若检索 0 条且 {@code empty-hits-behavior=no-llm}，不调 {@link com.vagent.llm.LlmClient}；
+ *       <b>U5</b> 对话检索走 {@link com.vagent.kb.KnowledgeRetrieveService#searchForRag}，可合并第二路全表召回。</li>
  * </ul>
  */
 @Service
 public class RagStreamChatService {
+
+    private static final Logger log = LoggerFactory.getLogger(RagStreamChatService.class);
 
     private static final long SSE_TIMEOUT_MS = 600_000L;
 
@@ -137,9 +142,7 @@ public class RagStreamChatService {
             hits = List.of();
             systemText = buildSystemDialogPrompt();
         } else {
-            hits =
-                    knowledgeRetrieveService.search(
-                            userId, rewrite.retrievalQuery(), ragProperties.getTopK());
+            hits = knowledgeRetrieveService.searchForRag(userId, rewrite.retrievalQuery(), ragProperties);
             if (branch == ChatBranch.RAG
                     && hits.isEmpty()
                     && ragProperties.getEmptyHitsBehavior() == EmptyHitsBehavior.NO_LLM) {
@@ -150,6 +153,10 @@ public class RagStreamChatService {
                 return emitter;
             }
             systemText = buildKnowledgeSystemPrompt(hits);
+        }
+
+        if (log.isDebugEnabled()) {
+            log.debug("stream branch={} hitCount={}", branch, hits.size());
         }
 
         List<LlmMessage> llmMessages = buildLlmMessages(systemText, history, userMessage);
@@ -271,7 +278,11 @@ public class RagStreamChatService {
                 .append("若用户问题与片段明显无关，可先简要说明再回答。片段内容：\n\n");
         for (int i = 0; i < hits.size(); i++) {
             RetrieveHit h = hits.get(i);
-            sb.append("--- 片段 ").append(i + 1).append(" ---\n");
+            sb.append("--- 片段 ").append(i + 1);
+            if ("global".equals(h.getSource())) {
+                sb.append("（来源：共享语料/跨用户召回，仅作参考）");
+            }
+            sb.append(" ---\n");
             String body = h.getContent();
             sb.append(body != null ? body : "").append("\n\n");
         }

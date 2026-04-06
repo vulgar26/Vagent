@@ -5,10 +5,21 @@ package com.vagent.kb.dto;
  */
 public class RetrieveHit {
 
+    /** U5：{@code primary} 用户隔离主路；{@code global} 第二路跨租户全局召回（仅配置开启时）。 */
+    private String source = "primary";
+
     private String chunkId;
     private String documentId;
     private String content;
     private double distance;
+
+    public String getSource() {
+        return source;
+    }
+
+    public void setSource(String source) {
+        this.source = source;
+    }
 
     public String getChunkId() {
         return chunkId;

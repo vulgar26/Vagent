@@ -30,4 +30,18 @@ public interface KbChunkMapper extends BaseMapper<KbChunk> {
             @Param("userId") String userId,
             @Param("qv") String qv,
             @Param("topK") int topK);
+
+    /**
+     * U5：全表最近邻（不按用户隔离）；仅应在显式开启第二路且接受跨租户语义时使用。
+     */
+    @Select("""
+            SELECT c.id AS chunk_id,
+                   c.document_id AS document_id,
+                   c.content AS content,
+                   (c.embedding <=> CAST(#{qv} AS vector(1024))) AS distance
+            FROM kb_chunks c
+            ORDER BY c.embedding <=> CAST(#{qv} AS vector(1024))
+            LIMIT #{topK}
+            """)
+    List<RetrieveHit> searchNearestGlobal(@Param("qv") String qv, @Param("topK") int topK);
 }

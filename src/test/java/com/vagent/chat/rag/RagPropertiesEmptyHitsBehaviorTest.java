@@ -8,7 +8,7 @@ import org.springframework.context.annotation.Configuration;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * U3：{@link RagProperties#emptyHitsBehavior} 与 Spring relaxed binding（{@code no-llm} / {@code allow-llm}）。
+ * U3：{@link RagProperties# emptyHitsBehavior} 与 Spring relaxed binding（{@code no-llm} / {@code allow-llm}）。
  */
 class RagPropertiesEmptyHitsBehaviorTest {
 

@@ -3,6 +3,8 @@ package com.vagent.chat;
 import com.vagent.llm.LlmChatRequest;
 import com.vagent.llm.LlmClient;
 import com.vagent.llm.LlmStreamSink;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Timer;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
@@ -10,6 +12,8 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import java.io.IOException;
 import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 /**
  * 把 {@link LlmClient#streamChat} 的回调统一映射到 SSE：{@code chunk} / {@code done} / {@code cancelled} / {@code error}。
  * <p>
@@ -34,10 +38,13 @@ public class LlmSseStreamingBridge {
 
     private final LlmClient llmClient;
     private final LlmStreamTaskRegistry taskRegistry;
+    private final MeterRegistry meterRegistry;
 
-    public LlmSseStreamingBridge(LlmClient llmClient, LlmStreamTaskRegistry taskRegistry) {
+    public LlmSseStreamingBridge(
+            LlmClient llmClient, LlmStreamTaskRegistry taskRegistry, MeterRegistry meterRegistry) {
         this.llmClient = llmClient;
         this.taskRegistry = taskRegistry;
+        this.meterRegistry = meterRegistry;
     }
 
     public void streamChatToSse(
@@ -56,6 +63,9 @@ public class LlmSseStreamingBridge {
                         req.model(),
                         () -> req.isCancelled() || taskRegistry.isCancelled(taskId));
 
+        long streamStartNs = System.nanoTime();
+        AtomicBoolean streamTimerRecorded = new AtomicBoolean();
+
         llmClient.streamChat(withCancel, new LlmStreamSink() {
             @Override
             public void onChunk(String text) {
@@ -68,6 +78,7 @@ public class LlmSseStreamingBridge {
                 try {
                     sendEvent(emitter, Map.of("type", "chunk", "text", text != null ? text : ""));
                 } catch (IOException e) {
+                    recordStreamTimerOnce(streamTimerRecorded, streamStartNs, "error");
                     emitter.completeWithError(e);
                 }
             }
@@ -77,14 +88,17 @@ public class LlmSseStreamingBridge {
                 try {
                     if (taskRegistry.isCancelled(taskId)) {
                         sendEvent(emitter, Map.of("type", "cancelled"));
+                        recordStreamTimerOnce(streamTimerRecorded, streamStartNs, "cancelled");
                     } else {
                         sendEvent(emitter, Map.of("type", "done"));
                         if (onSuccessAfterDoneEvent != null) {
                             onSuccessAfterDoneEvent.run();
                         }
+                        recordStreamTimerOnce(streamTimerRecorded, streamStartNs, "success");
                     }
                     emitter.complete();
                 } catch (Exception e) {
+                    recordStreamTimerOnce(streamTimerRecorded, streamStartNs, "error");
                     emitter.completeWithError(e);
                 }
             }
@@ -92,6 +106,7 @@ public class LlmSseStreamingBridge {
             @Override
             public void onError(Throwable t) {
                 try {
+                    recordStreamTimerOnce(streamTimerRecorded, streamStartNs, "error");
                     String msg = t.getMessage() != null ? t.getMessage() : "unknown";
                     sendEvent(emitter, Map.of("type", "error", "message", msg));
                     emitter.completeWithError(t);
@@ -100,6 +115,17 @@ public class LlmSseStreamingBridge {
                 }
             }
         });
+    }
+
+    private void recordStreamTimerOnce(AtomicBoolean gate, long streamStartNs, String outcome) {
+        if (!gate.compareAndSet(false, true)) {
+            return;
+        }
+        long nanos = System.nanoTime() - streamStartNs;
+        Timer.builder("vagent.chat.stream")
+                .tag("outcome", outcome)
+                .register(meterRegistry)
+                .record(nanos, TimeUnit.NANOSECONDS);
     }
 
     private void sendEvent(SseEmitter emitter, Map<String, Object> payload) throws IOException {

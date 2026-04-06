@@ -1,6 +1,7 @@
 package com.vagent.chat;
 
 import com.vagent.chat.rag.RagProperties;
+import com.vagent.observability.MdcTaskDecorator;
 import com.vagent.orchestration.OrchestrationProperties;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
@@ -24,6 +25,7 @@ public class ChatStreamingConfiguration {
         ex.setMaxPoolSize(32);
         ex.setQueueCapacity(200);
         ex.setThreadNamePrefix("llm-stream-");
+        ex.setTaskDecorator(new MdcTaskDecorator());
         ex.initialize();
         return ex;
     }

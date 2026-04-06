@@ -102,7 +102,7 @@ DDL 入口：`src/main/resources/schema-core.sql`（核心业务）、`schema-ve
 
 | 前缀 | 作用 |
 |------|------|
-| `vagent.rag.*` | 是否启用 RAG、检索 topK、历史条数上限；**U3** `empty-hits-behavior` / `empty-hits-no-llm-message` |
+| `vagent.rag.*` | 是否启用 RAG、检索 topK、历史条数上限；**U3** `empty-hits-behavior`；**U5** `second-path.*`（默认关） |
 | `vagent.orchestration.*` | 意图开关、改写策略、寒暄前缀、澄清模板等（M5） |
 | `vagent.llm.*` | 模型提供方（`noop` / `fake-stream` / **`dashscope`**）、默认模型名、假流式参数 |
 | `vagent.llm.dashscope.*` | U1：兼容模式基址、API Key、对话模型（仅 `provider=dashscope` 时生效） |
@@ -139,12 +139,16 @@ DDL 入口：`src/main/resources/schema-core.sql`（核心业务）、`schema-ve
 
 **U3（升级）**：空检索是否调 LLM（`empty-hits-behavior`），见 [U3-实现说明.md](U3-实现说明.md)。
 
+**U4（升级）**：MDC `traceId`、检索与 LLM 流式 Micrometer 指标，见 [U4-实现说明.md](U4-实现说明.md)。
+
+**U5（升级）**：第二路全局向量召回与主路合并，见 [U5-实现说明.md](U5-实现说明.md)。
+
 ---
 
 ## 10. 后续可演进方向（非承诺）
 
 - 真实厂商 **流式 HTTP** `LlmClient`、密钥与超时配置化。  
-- 多路检索、Trace 落库、MCP 工具等（见 [Vagent-升级策划书.md](Vagent-升级策划书.md) U4+）。  
+- **U4** 已提供 traceId 与基础 Timer；**Trace 落库 / 多路检索 / MCP** 等见 [Vagent-升级策划书.md](Vagent-升级策划书.md) U5+。  
 - **LLM 改写 / 子问题拆分** 替换当前规则实现。  
 - 请求追踪、各阶段耗时指标（Micrometer / Trace）。  
 - Flyway/Liquibase 替代 `spring.sql.init.mode=always`。

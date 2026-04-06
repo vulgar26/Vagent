@@ -34,6 +34,10 @@ import org.springframework.boot.autoconfigure.security.servlet.UserDetailsServic
  * <p>
  * <b>U3 补充：</b> {@code vagent.rag.empty-hits-behavior} 控制 RAG 无命中时是否仍调用 LLM，见 {@code com.vagent.chat.RagStreamChatService} 与 {@code docs/U3-实现说明.md}。
  * <p>
+ * <b>U4 补充：</b> {@link com.vagent.observability.TraceIdMdcFilter}（MDC {@code traceId}）、{@code llm-stream-*} 线程 MDC 传递、Micrometer {@code vagent.rag.retrieve} / {@code vagent.chat.stream}，见 {@code docs/U4-实现说明.md}。
+ * <p>
+ * <b>U5 补充：</b> {@link com.vagent.kb.KnowledgeRetrieveService#searchForRag} 可选第二路全表向量与 {@link com.vagent.kb.RetrieveHitMerge}，见 {@code docs/U5-实现说明.md}。
+ * <p>
  */
 @MapperScan("com.vagent")
 @SpringBootApplication(exclude = {UserDetailsServiceAutoConfiguration.class})

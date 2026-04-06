@@ -75,10 +75,10 @@
 | 真实 LLM 流式 | `noop` / `fake-stream` | **U1** | 千问兼容客户端 |
 | 真实 Embedding | 默认仍可选 `hash`；**U2** 已实现 `dashscope` | **U2** | `vector(1024)` + [U2-实现说明.md](U2-实现说明.md) |
 | 空检索不调 LLM | **U3** 起可 `no-llm`；默认 `allow-llm`（见 DECISIONS） | **U3** | [U3-实现说明.md](U3-实现说明.md) |
-| 多通道检索 + 后处理 | 单路 pgvector | **U4** | 条件触发第二路召回等，简化版即可 |
+| 多通道检索 + 后处理 | **U5** 第二路全局向量 + 合并（可关） | **U5** | [U5-实现说明.md](U5-实现说明.md) |
 | 模型路由 / 健康度 / 首包 | 无 | **U5**（可选） | 对齐 `infra-ai` 思想，非单应用必需 |
 | MCP 工具 | 无 | **U6**（远期） | 独立进程或进程内注册表 |
-| Trace 落库与查询 API | 无统一 Trace | **U4+** | MDC traceId + Micrometer 先行 |
+| Trace 落库与查询 API | **U4** 已实现 MDC + Micrometer；**落库查询 API** 仍无 | **U4+** | [U4-实现说明.md](U4-实现说明.md) |
 
 ---
 
@@ -127,17 +127,30 @@
 
 ### U4：可观测与工程化
 
+**状态（实现）**：已完成，见 `TraceIdMdcFilter`、`MdcTaskDecorator`、`KnowledgeRetrieveService` / `LlmSseStreamingBridge` 中 Timer、[U4-实现说明.md](U4-实现说明.md)。
+
 **交付物**
 
-- 请求 / 会话级 **traceId**（MDC），关键阶段日志。  
-- **Micrometer**：`chat.stream` 耗时、检索耗时等（按需）。  
-- **Flyway / Liquibase** 替代 `spring.sql.init.mode=always`（生产建议）。
+- 请求级 **traceId**（MDC），响应头 `X-Trace-Id`；异步流式线程继承 MDC。  
+- **Micrometer**：`vagent.rag.retrieve`、`vagent.chat.stream`（`outcome` 标签）。  
+- **Flyway / Liquibase**：生产建议，文档说明；本仓库仍用 `spring.sql.init` 便于开发。
+
+**验收**
+
+- `TraceIdMdcFilterTest`；`GET /actuator/metrics` 可见上述指标名（需暴露 `metrics`）。
 
 ### U5：多路检索（简化版 Ragent）
 
+**状态（实现）**：已完成，见 `KnowledgeRetrieveService#searchForRag`、`KbChunkMapper#searchNearestGlobal`、`RetrieveHitMerge`、[U5-实现说明.md](U5-实现说明.md)。
+
 **交付物**
 
-- 在「意图置信度低或无命中」时增加**第二路**召回（如全局向量），结果 **去重 / 合并**，不必一次上齐 Ragent 全部通道。
+- 在「无命中 / 主路命中偏少 / 检索 query 过短」时可触发**第二路**全表向量召回；**去重 / 合并**后截断为 `top-k`。  
+- 默认关闭（`second-path.enabled` / `cross-tenant`）；`GET /kb/retrieve` 仍仅主路。
+
+**验收**
+
+- `RetrieveHitMergeTest`；配置开启后对话流可合并 `primary` 与 `global` 片段。
 
 ### U6：MCP 或工具协议（远期）
 

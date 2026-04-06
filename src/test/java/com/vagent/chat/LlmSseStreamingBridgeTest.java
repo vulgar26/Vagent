@@ -3,6 +3,7 @@ package com.vagent.chat;
 import com.vagent.llm.LlmChatRequest;
 import com.vagent.llm.LlmMessage;
 import com.vagent.llm.impl.NoopLlmClient;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.Test;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
@@ -19,7 +20,8 @@ class LlmSseStreamingBridgeTest {
     @Test
     void noop_complete_invokesSuccessRunnable() {
         LlmStreamTaskRegistry reg = new LlmStreamTaskRegistry();
-        LlmSseStreamingBridge bridge = new LlmSseStreamingBridge(new NoopLlmClient(), reg);
+        LlmSseStreamingBridge bridge =
+                new LlmSseStreamingBridge(new NoopLlmClient(), reg, new SimpleMeterRegistry());
         String taskId = reg.registerTask("u1");
         SseEmitter emitter = new SseEmitter(60_000L);
         AtomicBoolean doneCallback = new AtomicBoolean();
@@ -40,7 +42,8 @@ class LlmSseStreamingBridgeTest {
                             sink.onChunk("x");
                             sink.onComplete();
                         },
-                        reg);
+                        reg,
+                        new SimpleMeterRegistry());
         String taskId = reg.registerTask("u1");
         reg.cancel(taskId, "u1");
         SseEmitter emitter = new SseEmitter(60_000L);
@@ -62,7 +65,8 @@ class LlmSseStreamingBridgeTest {
                             sink.onChunk("ab");
                             sink.onComplete();
                         },
-                        reg);
+                        reg,
+                        new SimpleMeterRegistry());
         String taskId = reg.registerTask("u1");
         SseEmitter emitter = new SseEmitter(60_000L);
         StringBuilder buf = new StringBuilder();

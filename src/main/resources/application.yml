@@ -1,16 +1,21 @@
 # =============================================================================
-# Vagent 应用配置（M0–M5 + U1/U2/U3；详见 docs/Mx-实现说明.md、docs/U1-实现说明.md 等）
+# Vagent 应用配置（M0–M5 + U1–U5；详见 docs/Mx-实现说明.md、docs/U1-实现说明.md 等）
 # =============================================================================
 # 本地需先创建库与用户，并授权 schema public（见 README）；测试用 test profile + H2，不依赖本机 PG。
 
 server:
   port: 8080
 
+logging:
+  pattern:
+    # U4：控制台日志带 MDC traceId（由 TraceIdMdcFilter 注入）
+    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} %5p [%X{traceId:-}] %logger{36} - %m%n"
+
 management:
   endpoints:
     web:
       exposure:
-        include: health,info
+        include: health,info,metrics
   endpoint:
     health:
       probes:
@@ -51,6 +56,14 @@ vagent:
     # U3：RAG 分支检索无命中时 no-llm=不调 LLM（固定文案+done）；allow-llm=仍调 LLM（与旧版一致）
     empty-hits-behavior: allow-llm
     # empty-hits-no-llm-message: 自定义 no-llm 时推送的固定全文（可选）
+    # U5：第二路全表向量（跨租户）；生产默认关闭，见 docs/U5-实现说明.md
+    second-path:
+      enabled: false
+      cross-tenant: false
+      top-k: 5
+      trigger-on-empty: true
+      min-primary-hits-below: 1
+      min-query-length: 0
   llm:
     # noop | fake-stream | dashscope（通义千问兼容模式，需密钥）
     provider: noop

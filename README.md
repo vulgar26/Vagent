@@ -18,6 +18,8 @@
 | **U1** | **通义千问**（`dashscope`）：OpenAI 兼容流式 Chat Completions；`vagent.llm.dashscope.*` |
 | **U2** | **通义千问嵌入**（`embedding.provider=dashscope`）；**向量 1024 维**；`vagent.embedding.dashscope.*` |
 | **U3** | **空检索策略**（`vagent.rag.empty-hits-behavior`：`no-llm` / `allow-llm` 默认） |
+| **U4** | **可观测**：MDC `traceId`、`vagent.rag.retrieve` / `vagent.chat.stream` 指标；生产 DDL 建议 Flyway（见 U4 文档） |
+| **U5** | **第二路检索**：全表向量 + 与主路合并去重（`vagent.rag.second-path.*`，默认关） |
 
 - [docs/Vagent-项目介绍.md](docs/Vagent-项目介绍.md)（**项目详细介绍**：定位、模块、主链路、数据、API、配置）
 - [docs/Vagent-项目策划书.md](docs/Vagent-项目策划书.md)（立项与 §3 主链路规格）
@@ -33,6 +35,8 @@
 - [docs/U1-实现说明.md](docs/U1-实现说明.md)（U1：通义千问 DashScope 流式、`provider=dashscope`）
 - [docs/U2-实现说明.md](docs/U2-实现说明.md)（U2：DashScope 嵌入、`vector(1024)`、迁移说明）
 - [docs/U3-实现说明.md](docs/U3-实现说明.md)（U3：空检索是否调 LLM、`empty-hits-behavior`）
+- [docs/U4-实现说明.md](docs/U4-实现说明.md)（U4：traceId、Micrometer、Flyway 建议）
+- [docs/U5-实现说明.md](docs/U5-实现说明.md)（U5：第二路全局向量、合并、安全说明）
 - [docs/面试准备.md](docs/面试准备.md)（架构口述、追问答法；面试相关内容持续更新）
 
 ## 可选：Docker Compose（PostgreSQL + pgvector）
@@ -69,6 +73,17 @@ docker compose up -d
 - `vagent.rag.empty-hits-behavior: no-llm`：RAG 分支检索 **0 条**时不调 LLM，只推送固定文案并 `done`（对齐策划书 §3）。  
 - 默认 **`allow-llm`**：与旧版一致，未命中时仍调 LLM（见 [DECISIONS.md](docs/DECISIONS.md)）。  
 - 详见 [docs/U3-实现说明.md](docs/U3-实现说明.md)。
+
+### 可观测（U4）
+
+- 每个 HTTP 请求设置 MDC **`traceId`**，响应头 **`X-Trace-Id`**；SSE 异步线程通过 `llmStreamExecutor` 的 **TaskDecorator** 继承 MDC。  
+- Micrometer：**`vagent.rag.retrieve`**（检索耗时）、**`vagent.chat.stream`**（LLM→SSE 流耗时，`outcome`=`success|cancelled|error`）；见 `GET /actuator/metrics`（需已暴露 `metrics`）。  
+- 详见 [docs/U4-实现说明.md](docs/U4-实现说明.md)。
+
+### 多路检索（U5）
+
+- 对话 RAG 使用 **`searchForRag`**：先主路（用户隔离），满足条件时可合并 **全表**第二路；**默认关闭**，防跨租户泄露。  
+- **`POST /kb/retrieve`** 仍为仅主路。详见 [docs/U5-实现说明.md](docs/U5-实现说明.md)。
 
 ## 环境
 

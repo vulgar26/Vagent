@@ -1,6 +1,7 @@
 package com.vagent.security;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.vagent.observability.TraceIdMdcFilter;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -34,10 +35,15 @@ import java.util.List;
 public class SecurityConfig {
 
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
+    private final TraceIdMdcFilter traceIdMdcFilter;
     private final ObjectMapper objectMapper;
 
-    public SecurityConfig(JwtAuthenticationFilter jwtAuthenticationFilter, ObjectMapper objectMapper) {
+    public SecurityConfig(
+            JwtAuthenticationFilter jwtAuthenticationFilter,
+            TraceIdMdcFilter traceIdMdcFilter,
+            ObjectMapper objectMapper) {
         this.jwtAuthenticationFilter = jwtAuthenticationFilter;
+        this.traceIdMdcFilter = traceIdMdcFilter;
         this.objectMapper = objectMapper;
     }
 
@@ -58,6 +64,7 @@ public class SecurityConfig {
                     response.getWriter().write(objectMapper.writeValueAsString(
                             java.util.Map.of("error", "UNAUTHORIZED", "message", "需要登录或令牌无效")));
                 }))
+                .addFilterBefore(traceIdMdcFilter, JwtAuthenticationFilter.class)
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
         return http.build();
     }
@@ -76,7 +83,7 @@ public class SecurityConfig {
         config.setAllowedOriginPatterns(List.of("*"));
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
         config.setAllowedHeaders(List.of("*"));
-        config.setExposedHeaders(List.of("Authorization"));
+        config.setExposedHeaders(List.of("Authorization", TraceIdMdcFilter.RESPONSE_TRACE_HEADER));
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", config);
         return source;
