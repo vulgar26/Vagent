@@ -28,6 +28,8 @@ import org.springframework.boot.autoconfigure.security.servlet.UserDetailsServic
  * <p>
  * <b>M6 补充：</b> 策划书要求的 {@code docs/DECISIONS.md}、SSE/任务注册表单测、可选 {@code docker-compose.yml}；详见 {@code docs/M6-实现说明.md}。
  * <p>
+ * <b>U1 补充：</b> {@code vagent.llm.provider=dashscope} 时接入通义千问 OpenAI 兼容流式，见 {@code com.vagent.llm.impl.DashScopeCompatibleStreamingLlmClient} 与 {@code docs/U1-实现说明.md}。
+ * <p>
  */
 @MapperScan("com.vagent")
 @SpringBootApplication(exclude = {UserDetailsServiceAutoConfiguration.class})

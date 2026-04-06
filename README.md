@@ -15,6 +15,7 @@
 | **M4** | **`messages` 表**、**RAG 编排**（历史 + 检索 + SYSTEM）；`vagent.rag.*`；`meta.hitCount` |
 | **M5** | **改写**（透传 / 历史 USER 拼接检索 query）、**规则意图**（寒暄不经检索、过短澄清）；`meta.branch` |
 | **M6** | **单测补强**（任务注册表、SSE Bridge）、**DECISIONS**、可选 **Docker Compose**、文档收尾 |
+| **U1** | **通义千问**（`dashscope`）：OpenAI 兼容流式 Chat Completions；`vagent.llm.dashscope.*` |
 
 - [docs/Vagent-项目介绍.md](docs/Vagent-项目介绍.md)（**项目详细介绍**：定位、模块、主链路、数据、API、配置）
 - [docs/Vagent-项目策划书.md](docs/Vagent-项目策划书.md)（立项与 §3 主链路规格）
@@ -27,6 +28,7 @@
 - [docs/M4-实现说明.md](docs/M4-实现说明.md)（M4：多轮消息、RAG、`vagent.rag`）
 - [docs/M5-实现说明.md](docs/M5-实现说明.md)（M5：改写、意图分支、`vagent.orchestration`）
 - [docs/M6-实现说明.md](docs/M6-实现说明.md)（M6：测试、DECISIONS、Compose）
+- [docs/U1-实现说明.md](docs/U1-实现说明.md)（U1：通义千问 DashScope 流式、`provider=dashscope`）
 - [docs/面试准备.md](docs/面试准备.md)（架构口述、追问答法；面试相关内容持续更新）
 
 ## 可选：Docker Compose（PostgreSQL + pgvector）
@@ -38,6 +40,18 @@ docker compose up -d
 ```
 
 待健康检查通过后执行 `mvn spring-boot:run`（默认连接 `localhost:5432`）。首次需保证镜像能拉取 `pgvector/pgvector:pg16`。
+
+## 通义千问（DashScope，U1）
+
+1. 在阿里云开通 DashScope，创建 API Key（**勿提交到 Git**）。  
+2. 启动前设置环境变量：`DASHSCOPE_API_KEY=你的Key`（Windows 可用 `set` / PowerShell `$env:`）。  
+3. 在 `application.yml`（或 `application-local.yml`）中设置：
+   - `vagent.llm.provider: dashscope`
+   - 按需调整 `vagent.llm.dashscope.chat-model`（如 `qwen-turbo`、`qwen-plus`）。  
+4. 启动应用后，走与普通流式相同的 `POST .../chat/stream`；SSE 将输出**真实模型**增量。  
+5. CI / 无网环境保持 `provider: noop`（见 `application-test.yml`）。
+
+详见 [docs/U1-实现说明.md](docs/U1-实现说明.md) 与 [docs/Vagent-升级策划书.md](docs/Vagent-升级策划书.md)。
 
 ## 环境
 

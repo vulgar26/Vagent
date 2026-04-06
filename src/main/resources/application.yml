@@ -1,5 +1,5 @@
 # =============================================================================
-# Vagent 应用配置（M0–M5：至 RAG+messages+orchestration；详见各 docs/Mx-实现说明.md）
+# Vagent 应用配置（M0–M5 + U1 千问；详见 docs/Mx-实现说明.md、docs/U1-实现说明.md）
 # =============================================================================
 # 本地需先创建库与用户，并授权 schema public（见 README）；测试用 test profile + H2，不依赖本机 PG。
 
@@ -49,11 +49,16 @@ vagent:
     top-k: 5
     max-history-messages: 20
   llm:
-    # noop | fake-stream（本地分块演示，不调用外网）
+    # noop | fake-stream | dashscope（通义千问兼容模式，需密钥）
     provider: noop
     default-model: ""
     fake-stream-chunk-size: 4
     fake-stream-chunk-delay-ms: 25
+    # U1：仅当 provider=dashscope 生效；密钥务必用环境变量注入
+    dashscope:
+      base-url: https://dashscope.aliyuncs.com/compatible-mode/v1
+      api-key: ${DASHSCOPE_API_KEY:}
+      chat-model: qwen-turbo
   # 嵌入维度须与 schema-vector.sql 中 vector(N) 一致；hash 为可复现占位实现
   embedding:
     provider: hash

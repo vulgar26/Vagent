@@ -22,7 +22,8 @@ public class LlmProperties {
      * 选用哪一种 {@link com.vagent.llm.LlmClient} 实现。
      * <ul>
      *   <li>{@code noop}：空实现，不调外部接口, 用于本地无密钥时的占位</li>
-     *   <li>后续可增 {@code dashscope}、{@code openai-compatible} 等，与新增实现类一一对应</li>
+     *   <li>{@code fake-stream}：本地分块演示，不调用外网</li>
+     *   <li>{@code dashscope}：阿里云通义千问 OpenAI 兼容模式流式（需 {@code vagent.llm.dashscope.api-key}）</li>
      * </ul>
      */
     private String provider = "noop";

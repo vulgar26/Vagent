@@ -16,7 +16,7 @@
     <artifactId>vagent</artifactId>
     <version>0.1.0-SNAPSHOT</version>
     <name>Vagent</name>
-    <description>Enterprise-style conversational RAG (M0–M6: bootstrap through RAG orchestration, tests, DECISIONS)</description>
+    <description>Enterprise-style conversational RAG (M0–M6 + U1 DashScope streaming LLM)</description>
 
     <properties>
         <java.version>17</java.version>

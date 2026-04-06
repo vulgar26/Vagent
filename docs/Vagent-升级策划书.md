@@ -89,11 +89,13 @@
 
 ### U1：通义千问流式对话（必做）
 
+**状态（实现）**：已完成，见源码 `DashScopeCompatibleStreamingLlmClient`、配置 `vagent.llm.dashscope.*`、文档 [U1-实现说明.md](U1-实现说明.md)。
+
 **交付物**
 
 - 新 `LlmClient` 实现：调用 DashScope 兼容接口，**流式**解析并写入现有 `LlmStreamSink`。  
 - `application.yml` + 环境变量说明；README 增加「千问演示」步骤。  
-- 单测：对解析逻辑做 **Mock Web 服务器** 或录制响应；默认 CI 仍不依赖外网。
+- 单测：SSE JSON 行解析（`DashScopeOpenAiStreamParserTest`）；默认 CI 仍不依赖外网。
 
 **验收**
 

@@ -1,6 +1,8 @@
 package com.vagent.llm.config;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.vagent.llm.LlmClient;
+import com.vagent.llm.impl.DashScopeCompatibleStreamingLlmClient;
 import com.vagent.llm.impl.FakeStreamingLlmClient;
 import com.vagent.llm.impl.NoopLlmClient;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -11,7 +13,7 @@ import org.springframework.context.annotation.Configuration;
 /**
  * LLM 相关 Spring Bean 的装配配置。
  * <p>
- * <b>这个类是干什么的：</b>
+ * <b>这个文件是干什么的：</b>
  * 根据配置 {@code vagent.llm.provider} 向容器里注册对应的 {@link LlmClient} 实现。业务代码通过构造器注入 {@code LlmClient}，
  * 运行时得到的就是这里选中的实现。
  * <p>
@@ -22,7 +24,7 @@ import org.springframework.context.annotation.Configuration;
  * 在本类中新增一个 {@code @Bean} + {@code @ConditionalOnProperty(..., havingValue = "新名字")}，指向新的实现类即可。
  */
 @Configuration
-@EnableConfigurationProperties(LlmProperties.class)
+@EnableConfigurationProperties({LlmProperties.class, DashScopeProperties.class})
 public class LlmClientConfiguration {
 
     /**
@@ -41,5 +43,17 @@ public class LlmClientConfiguration {
     @ConditionalOnProperty(prefix = "vagent.llm", name = "provider", havingValue = "fake-stream")
     LlmClient fakeStreamingLlmClient(LlmProperties llmProperties) {
         return new FakeStreamingLlmClient(llmProperties);
+    }
+
+    /**
+     * U1：阿里云通义千问 OpenAI 兼容模式流式对话（需配置 API Key，见 {@link DashScopeProperties}）。
+     */
+    @Bean
+    @ConditionalOnProperty(prefix = "vagent.llm", name = "provider", havingValue = "dashscope")
+    LlmClient dashScopeCompatibleStreamingLlmClient(
+            LlmProperties llmProperties,
+            DashScopeProperties dashScopeProperties,
+            ObjectMapper objectMapper) {
+        return new DashScopeCompatibleStreamingLlmClient(llmProperties, dashScopeProperties, objectMapper);
     }
 }

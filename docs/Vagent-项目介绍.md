@@ -23,6 +23,7 @@
 | 向量检索 | pgvector | 文档分块嵌入后写入，检索时同用户隔离 |
 | 嵌入（当前） | 可配置 `HashEmbeddingClient` | 可复现占位向量，维度与表结构一致即可 |
 | 流式输出 | `SseEmitter` | 事件体为 JSON，`type` 区分 meta/chunk/done 等 |
+| 大模型（U1） | `noop` / `fake-stream` / **`dashscope`**（通义千问兼容 HTTP 流式） | 见 `LlmClientConfiguration`、 [U1-实现说明.md](U1-实现说明.md) |
 | 测试 | JUnit 5、Spring Boot Test、H2（PostgreSQL 模式） | 默认不测真实向量；pgvector 有单独集成测试类 |
 
 ---
@@ -103,7 +104,8 @@ DDL 入口：`src/main/resources/schema-core.sql`（核心业务）、`schema-ve
 |------|------|
 | `vagent.rag.*` | 是否启用 RAG 主链路、检索 topK、历史条数上限等 |
 | `vagent.orchestration.*` | 意图开关、改写策略、寒暄前缀、澄清模板等（M5） |
-| `vagent.llm.*` | 模型提供方（`noop` / `fake-stream`）、默认模型名、假流式参数 |
+| `vagent.llm.*` | 模型提供方（`noop` / `fake-stream` / **`dashscope`**）、默认模型名、假流式参数 |
+| `vagent.llm.dashscope.*` | U1：兼容模式基址、API Key、对话模型（仅 `provider=dashscope` 时生效） |
 | `vagent.embedding.*` | 嵌入实现与维度、分块长度（须与向量列维度一致） |
 | `vagent.security.jwt.*` | JWT 密钥与过期时间 |
 
@@ -129,6 +131,8 @@ DDL 入口：`src/main/resources/schema-core.sql`（核心业务）、`schema-ve
 | [面试准备.md](面试准备.md) | 口述架构与问答（个人向） |
 
 **M0–M6 一句话**：骨架与 LLM 接口 → 用户/会话/JWT → pgvector 与 KB API → SSE 与取消 → 多轮消息与 RAG 编排 → 改写与意图分支 → 单测/DECISIONS/Compose 与文档收尾。
+
+**U1（升级）**：通义千问 DashScope OpenAI 兼容流式，见 [U1-实现说明.md](U1-实现说明.md) 与 [Vagent-升级策划书.md](Vagent-升级策划书.md)。
 
 ---
 
