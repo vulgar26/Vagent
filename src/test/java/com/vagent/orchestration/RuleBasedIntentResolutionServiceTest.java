@@ -46,4 +46,33 @@ class RuleBasedIntentResolutionServiceTest {
 
         assertThat(svc.resolve("  ").branch()).isEqualTo(ChatBranch.CLARIFICATION);
     }
+
+    @Test
+    void tool_intent_parses_explicit_tool_and_args() {
+        OrchestrationProperties p = new OrchestrationProperties();
+        p.setToolIntentEnabled(true);
+        RuleBasedIntentResolutionService svc = new RuleBasedIntentResolutionService(p);
+
+        var r1 = svc.resolve("tool=echo message=hello");
+        assertThat(r1.branch()).isEqualTo(ChatBranch.RAG);
+        assertThat(r1.toolIntent()).isTrue();
+        assertThat(r1.optionalToolName()).contains("echo");
+        assertThat(r1.safeToolArguments()).containsEntry("message", "hello");
+
+        var r2 = svc.resolve("/tool ping");
+        assertThat(r2.branch()).isEqualTo(ChatBranch.RAG);
+        assertThat(r2.toolIntent()).isTrue();
+        assertThat(r2.optionalToolName()).contains("ping");
+    }
+
+    @Test
+    void tool_intent_parses_quoted_args() {
+        OrchestrationProperties p = new OrchestrationProperties();
+        p.setToolIntentEnabled(true);
+        RuleBasedIntentResolutionService svc = new RuleBasedIntentResolutionService(p);
+
+        var r = svc.resolve("tool=echo message=\"hello world\"");
+        assertThat(r.toolIntent()).isTrue();
+        assertThat(r.safeToolArguments()).containsEntry("message", "hello world");
+    }
 }

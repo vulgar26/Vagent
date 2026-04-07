@@ -7,6 +7,8 @@ import com.vagent.orchestration.model.IntentResult;
 import org.springframework.stereotype.Service;
 
 import java.util.Locale;
+import java.util.Map;
+import java.util.LinkedHashMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -22,6 +24,8 @@ public class RuleBasedIntentResolutionService implements IntentResolutionService
             Pattern.compile("(?i)(?:^|\\s)tool\\s*=\\s*([a-zA-Z0-9_\\-]+)(?:\\s|$)");
     private static final Pattern TOOL_SLASH_PATTERN =
             Pattern.compile("(?i)(?:^|\\s)/tool\\s+([a-zA-Z0-9_\\-]+)(?:\\s|$)");
+    private static final Pattern TOOL_ARG_PATTERN =
+            Pattern.compile("(?i)([a-zA-Z0-9_\\-]+)\\s*=\\s*(\"([^\"]*)\"|'([^']*)'|([^\\s]+))");
 
     private final OrchestrationProperties properties;
 
@@ -51,9 +55,9 @@ public class RuleBasedIntentResolutionService implements IntentResolutionService
 
         // U7：显式“工具意图”——命中关键词则允许在 RAG 分支中调用 MCP 工具（实际是否调用仍需白名单+开关）。
         if (properties.isToolIntentEnabled()) {
-            String toolName = parseExplicitToolName(t);
-            if (toolName != null && !toolName.isBlank()) {
-                return new IntentResult(ChatBranch.RAG, true, toolName);
+            ToolInvocation inv = parseExplicitToolInvocation(t);
+            if (inv != null && inv.toolName != null && !inv.toolName.isBlank()) {
+                return new IntentResult(ChatBranch.RAG, true, inv.toolName, inv.arguments);
             }
             for (String kw : splitPrefixes(properties.getToolIntentKeywords())) {
                 if (kw.isEmpty()) {
@@ -67,17 +71,49 @@ public class RuleBasedIntentResolutionService implements IntentResolutionService
         return new IntentResult(ChatBranch.RAG);
     }
 
-    private static String parseExplicitToolName(String rawTrimmed) {
+    private static ToolInvocation parseExplicitToolInvocation(String rawTrimmed) {
         Matcher m = TOOL_ASSIGN_PATTERN.matcher(rawTrimmed);
         if (m.find()) {
-            return m.group(1);
+            String toolName = m.group(1);
+            Map<String, Object> args = parseArgsFromTail(rawTrimmed.substring(m.end()));
+            return new ToolInvocation(toolName, args);
         }
         Matcher m2 = TOOL_SLASH_PATTERN.matcher(rawTrimmed);
         if (m2.find()) {
-            return m2.group(1);
+            String toolName = m2.group(1);
+            Map<String, Object> args = parseArgsFromTail(rawTrimmed.substring(m2.end()));
+            return new ToolInvocation(toolName, args);
         }
         return null;
     }
+
+    private static Map<String, Object> parseArgsFromTail(String tail) {
+        if (tail == null || tail.isBlank()) {
+            return Map.of();
+        }
+        String s = tail.trim();
+        if (s.isEmpty()) {
+            return Map.of();
+        }
+        LinkedHashMap<String, Object> out = new LinkedHashMap<>();
+        Matcher m = TOOL_ARG_PATTERN.matcher(s);
+        while (m.find()) {
+            String k = m.group(1);
+            String v = m.group(3);
+            if (v == null) {
+                v = m.group(4);
+            }
+            if (v == null) {
+                v = m.group(5);
+            }
+            if (k != null && !k.isBlank()) {
+                out.put(k, v != null ? v : "");
+            }
+        }
+        return out.isEmpty() ? Map.of() : Map.copyOf(out);
+    }
+
+    private record ToolInvocation(String toolName, Map<String, Object> arguments) {}
 
     private static String[] splitPrefixes(String csv) {
         if (csv == null || csv.isBlank()) {

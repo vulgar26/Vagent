@@ -157,7 +157,7 @@ public class RagStreamChatService {
             String toolContextText = null;
             if (branch == ChatBranch.RAG && intent != null && intent.toolIntent()) {
                 toolMetaName = intent.optionalToolName().orElse(orchestrationProperties.getToolIntentDefaultToolName());
-                toolContextText = tryCallToolForContext(toolMetaName, userMessage);
+                toolContextText = tryCallToolForContext(toolMetaName, intent.safeToolArguments(), userMessage);
                 toolUsed = toolContextText != null && !toolContextText.isBlank();
             }
 
@@ -338,7 +338,7 @@ public class RagStreamChatService {
                 + base;
     }
 
-    private String tryCallToolForContext(String toolName, String userMessage) {
+    private String tryCallToolForContext(String toolName, Map<String, Object> toolArgs, String userMessage) {
         if (toolName == null || toolName.isBlank()) {
             return null;
         }
@@ -354,16 +354,27 @@ public class RagStreamChatService {
         }
 
         try {
-            Map<String, Object> args = Map.of();
-            if ("echo".equals(toolName)) {
-                args = Map.of("message", userMessage != null ? userMessage : "");
-            }
+            Map<String, Object> args = sanitizeToolArguments(toolName, toolArgs, userMessage);
             Map<String, Object> result = client.callTool(toolName, args);
             return buildToolContextPrompt(toolName, result);
         } catch (Exception e) {
             log.warn("mcp tool call failed: tool={}", toolName, e);
             return null;
         }
+    }
+
+    private static Map<String, Object> sanitizeToolArguments(
+            String toolName, Map<String, Object> raw, String userMessage) {
+        if ("ping".equals(toolName)) {
+            return Map.of();
+        }
+        if ("echo".equals(toolName)) {
+            Object v = raw != null ? raw.get("message") : null;
+            String message = v != null ? String.valueOf(v) : (userMessage != null ? userMessage : "");
+            return Map.of("message", message);
+        }
+        // Unknown tool: no arguments by default; server-side tool handler should validate inputSchema.
+        return Map.of();
     }
 
     private static boolean isToolAllowed(String toolName, String csvAllowed) {
