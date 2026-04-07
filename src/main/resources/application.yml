@@ -64,6 +64,12 @@ vagent:
       trigger-on-empty: true
       min-primary-hits-below: 1
       min-query-length: 0
+  # U6：MCP（独立 Python Server，HTTP）。默认关闭；启用后可用 /api/v1/mcp/* 联调工具列表与调用。
+  mcp:
+    enabled: false
+    base-url: http://127.0.0.1:8765/mcp
+    token: ${MCP_TOKEN:}
+    protocol-version: 2025-03-26
   llm:
     # noop | fake-stream | dashscope（通义千问兼容模式，需密钥）
     provider: noop

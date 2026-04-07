@@ -1,6 +1,6 @@
 # Vagent
 
-基于 Java 的企业风格对话式 RAG 系统（规划中）。
+基于 **Java / Spring Boot** 的企业风格 **对话式 RAG（检索增强生成）** 示例项目：包含 **JWT 登录**、**会话与消息落库**、**pgvector 知识库**、**SSE 流式对话与取消**，并支持通义千问（DashScope）与 MCP（HTTP）联调能力。
 
 **详细总览**（架构、包结构、主链路、数据与配置）：见 [docs/Vagent-项目介绍.md](docs/Vagent-项目介绍.md)。
 
@@ -20,6 +20,7 @@
 | **U3** | **空检索策略**（`vagent.rag.empty-hits-behavior`：`no-llm` / `allow-llm` 默认） |
 | **U4** | **可观测**：MDC `traceId`、`vagent.rag.retrieve` / `vagent.chat.stream` 指标；生产 DDL 建议 Flyway（见 U4 文档） |
 | **U5** | **第二路检索**：全表向量 + 与主路合并去重（`vagent.rag.second-path.*`，默认关） |
+| **U6** | **MCP（独立进程）**：Vagent 作为 MCP Client（HTTP），提供 `/api/v1/mcp/*` 联调入口（默认关） |
 
 - [docs/Vagent-项目介绍.md](docs/Vagent-项目介绍.md)（**项目详细介绍**：定位、模块、主链路、数据、API、配置）
 - [docs/Vagent-项目策划书.md](docs/Vagent-项目策划书.md)（立项与 §3 主链路规格）
@@ -37,6 +38,7 @@
 - [docs/U3-实现说明.md](docs/U3-实现说明.md)（U3：空检索是否调 LLM、`empty-hits-behavior`）
 - [docs/U4-实现说明.md](docs/U4-实现说明.md)（U4：traceId、Micrometer、Flyway 建议）
 - [docs/U5-实现说明.md](docs/U5-实现说明.md)（U5：第二路全局向量、合并、安全说明）
+- [docs/U6-实现说明.md](docs/U6-实现说明.md)（U6：MCP Client（HTTP）、联调 API）
 - [docs/面试准备.md](docs/面试准备.md)（架构口述、追问答法；面试相关内容持续更新）
 
 ## 可选：Docker Compose（PostgreSQL + pgvector）
@@ -84,6 +86,11 @@ docker compose up -d
 
 - 对话 RAG 使用 **`searchForRag`**：先主路（用户隔离），满足条件时可合并 **全表**第二路；**默认关闭**，防跨租户泄露。  
 - **`POST /kb/retrieve`** 仍为仅主路。详见 [docs/U5-实现说明.md](docs/U5-实现说明.md)。
+
+### MCP（U6）
+
+- Vagent 作为 **MCP Client（HTTP）**，用于联调独立进程的 MCP Server（当前为 **JSON-only** 响应模式）。默认关闭：`vagent.mcp.enabled=false`。
+- 联调 API：`GET /api/v1/mcp/tools`、`POST /api/v1/mcp/tools/{name}`（需登录）。详见 [docs/U6-实现说明.md](docs/U6-实现说明.md)。
 
 ## 环境
 

@@ -24,6 +24,7 @@
 | 嵌入 | `hash`（可复现）或 **`dashscope`**（U2，`text-embedding-v3`×**1024 维**） | 维度须与 `vector(1024)` 一致；见 [U2-实现说明.md](U2-实现说明.md) |
 | 流式输出 | `SseEmitter` | 事件体为 JSON，`type` 区分 meta/chunk/done 等 |
 | 大模型（U1） | `noop` / `fake-stream` / **`dashscope`**（通义千问兼容 HTTP 流式） | 见 `LlmClientConfiguration`、 [U1-实现说明.md](U1-实现说明.md) |
+| MCP（U6） | HTTP JSON-RPC（Streamable HTTP 的 JSON-only 响应模式） | Vagent 作为 **MCP Client** 联调独立进程 Server；见 [U6-实现说明.md](U6-实现说明.md) |
 | 测试 | JUnit 5、Spring Boot Test、H2（PostgreSQL 模式） | 默认不测真实向量；pgvector 有单独集成测试类 |
 
 ---
@@ -44,6 +45,7 @@
 | `embedding` | 嵌入客户端接口与配置（如 hash 实现） |
 | `llm` | `LlmClient` / `LlmChatRequest` / `LlmMessage` / `LlmStreamSink`；`impl` 下 `noop`、`fake-stream` |
 | `orchestration` | M5：**检索前改写**、**规则意图**（`RAG` / `SYSTEM_DIALOG` / `CLARIFICATION`） |
+| `mcp` | U6：MCP Client（HTTP）与联调 API（`/api/v1/mcp/*`）；当前不直接并入 RAG 主链路 |
 | `api` | 全局异常处理等横切 |
 
 **编排 heart**：`StreamChatService` 根据 `vagent.rag.enabled` 决定走 **M3 单条 USER** 还是 **`RagStreamChatService` 全链路**。
@@ -93,6 +95,8 @@ DDL 入口：`src/main/resources/schema-core.sql`（核心业务）、`schema-ve
 | POST | `/kb/retrieve` | 仅检索，非流式对话 |
 | POST | `/conversations/{id}/chat/stream` | **SSE 流式对话**（RAG 编排入口之一） |
 | POST | `/chat/tasks/{taskId}/cancel` | 取消流式任务 |
+| GET | `/mcp/tools` | U6：列出 MCP 工具（联调入口） |
+| POST | `/mcp/tools/{name}` | U6：调用 MCP 工具（联调入口，body 为 `arguments` JSON object） |
 
 详细请求体与演示步骤见根目录 [README.md](../README.md)。
 
@@ -108,6 +112,7 @@ DDL 入口：`src/main/resources/schema-core.sql`（核心业务）、`schema-ve
 | `vagent.llm.dashscope.*` | U1：兼容模式基址、API Key、对话模型（仅 `provider=dashscope` 时生效） |
 | `vagent.embedding.*` | 嵌入实现（`hash`/`dashscope`）与维度（默认 **1024**）、分块长度 |
 | `vagent.embedding.dashscope.*` | U2：嵌入 API 基址、Key、模型名 |
+| `vagent.mcp.*` | U6：MCP Client（HTTP）开关、base url、token、协议版本；以及联调 API 行为 |
 | `vagent.security.jwt.*` | JWT 密钥与过期时间 |
 
 生产环境务必将密钥改为环境变量或外部配置，**勿**提交真实密钥。
