@@ -7,6 +7,8 @@ import com.vagent.orchestration.model.IntentResult;
 import org.springframework.stereotype.Service;
 
 import java.util.Locale;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * 规则版意图：优先匹配寒暄前缀 → 过短则澄清 → 否则 RAG。
@@ -15,6 +17,11 @@ import java.util.Locale;
  */
 @Service
 public class RuleBasedIntentResolutionService implements IntentResolutionService {
+
+    private static final Pattern TOOL_ASSIGN_PATTERN =
+            Pattern.compile("(?i)(?:^|\\s)tool\\s*=\\s*([a-zA-Z0-9_\\-]+)(?:\\s|$)");
+    private static final Pattern TOOL_SLASH_PATTERN =
+            Pattern.compile("(?i)(?:^|\\s)/tool\\s+([a-zA-Z0-9_\\-]+)(?:\\s|$)");
 
     private final OrchestrationProperties properties;
 
@@ -41,7 +48,35 @@ public class RuleBasedIntentResolutionService implements IntentResolutionService
         if (t.length() < properties.getClarificationMinChars()) {
             return new IntentResult(ChatBranch.CLARIFICATION, properties.getClarificationTemplate());
         }
+
+        // U7：显式“工具意图”——命中关键词则允许在 RAG 分支中调用 MCP 工具（实际是否调用仍需白名单+开关）。
+        if (properties.isToolIntentEnabled()) {
+            String toolName = parseExplicitToolName(t);
+            if (toolName != null && !toolName.isBlank()) {
+                return new IntentResult(ChatBranch.RAG, true, toolName);
+            }
+            for (String kw : splitPrefixes(properties.getToolIntentKeywords())) {
+                if (kw.isEmpty()) {
+                    continue;
+                }
+                if (lower.contains(kw.toLowerCase(Locale.ROOT))) {
+                    return new IntentResult(ChatBranch.RAG, true, properties.getToolIntentDefaultToolName());
+                }
+            }
+        }
         return new IntentResult(ChatBranch.RAG);
+    }
+
+    private static String parseExplicitToolName(String rawTrimmed) {
+        Matcher m = TOOL_ASSIGN_PATTERN.matcher(rawTrimmed);
+        if (m.find()) {
+            return m.group(1);
+        }
+        Matcher m2 = TOOL_SLASH_PATTERN.matcher(rawTrimmed);
+        if (m2.find()) {
+            return m2.group(1);
+        }
+        return null;
     }
 
     private static String[] splitPrefixes(String csv) {

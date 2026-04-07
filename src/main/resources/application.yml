@@ -48,6 +48,10 @@ vagent:
     clarification-min-chars: 3
     system-dialog-prefixes: "你好,嗨,hi,hello,谢谢,再见,在吗,早上好,晚安"
     clarification-template: "您的描述较简短，请补充具体场景或关键词（例如涉及哪条流程、哪个系统），方便我准确回答。"
+    # U7：显式“工具意图”（推荐用 tool=xxx 或 /tool xxx 触发；关键词仅作兜底），默认关闭
+    tool-intent-enabled: false
+    tool-intent-keywords: "mcp,tool,工具,调用工具"
+    tool-intent-default-tool-name: echo
   # M4：多轮 + 检索编排（测试 profile 默认关闭，因 H2 未加载向量表）
   rag:
     enabled: true
@@ -70,6 +74,8 @@ vagent:
     base-url: http://127.0.0.1:8765/mcp
     token: ${MCP_TOKEN:}
     protocol-version: 2025-03-26
+    # U7：主链路工具调用白名单（逗号分隔）。为空则主链路不允许任何工具（仍可用 /api/v1/mcp/* 联调）。
+    allowed-tools: echo,ping
   llm:
     # noop | fake-stream | dashscope（通义千问兼容模式，需密钥）
     provider: noop

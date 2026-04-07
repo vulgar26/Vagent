@@ -11,7 +11,7 @@
 | 真实 LLM 流式 | 默认 `noop` / `fake-stream`；**U1** 起可选 **`vagent.llm.provider=dashscope`**（通义千问兼容模式），见 [U1-实现说明.md](U1-实现说明.md) | 无密钥环境可启动；有 Key 时走真实 HTTP 流式。 |
 | 真实 Embedding | 默认 `hash`；**U2** 起可选 **`vagent.embedding.provider=dashscope`**，向量默认 **1024 维**，见 [U2-实现说明.md](U2-实现说明.md) | 与 `vector(1024)` DDL 绑定；改维度须迁移并重嵌入。 |
 | 检索为空时固定提示后结束，**不再调用大模型** | **U3** 起可选 **`vagent.rag.empty-hits-behavior=no-llm`**（不调 `LlmClient`，固定文案 + SSE `done`）；默认 **`allow-llm`** 仍为旧行为（未命中说明 + 继续调用 LLM），见 [U3-实现说明.md](U3-实现说明.md) | 产品可选对齐 §3 或保留常识作答。 |
-| 检索引擎聚合 KB + MCP 等 | **U5**：主路用户隔离 + 可选第二路全表（`searchForRag`）。**U6**：已提供 MCP Client（HTTP）与 `/api/v1/mcp/*` 联调入口，但**尚未**并入 RAG 主链路 | 先把协议与可观测打通，再决定“工具调用”如何进入编排与 Prompt。 |
+| 检索引擎聚合 KB + MCP 等 | **U5**：主路用户隔离 + 可选第二路全表（`searchForRag`）。**U6**：MCP Client（HTTP）与 `/api/v1/mcp/*` 联调入口。**U7**：在 RAG 编排中引入“显式工具意图触发 + 工具白名单”，将工具结果并入 system prompt（不默认开启） | 以“默认不调用工具 + 白名单 + 超时降级”控制风险，避免 prompt 注入。 |
 | 子问题拆分、多路检索合并 | **单 query**（经 M5 改写可为拼接文本） | 后续可扩展 `RewriteResult` 与子检索循环。 |
 
 ---
