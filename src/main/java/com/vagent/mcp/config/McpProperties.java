@@ -24,6 +24,16 @@ public class McpProperties {
     /** MCP 协议版本；默认与 MCP 2025-03-26 schema 对齐。 */
     private String protocolVersion = "2025-03-26";
 
+    /**
+     * U7：允许调用的工具白名单（逗号分隔）。空表示不允许任何工具进入主链路（仅联调入口可用）。
+     * <p>
+     * 例：echo,ping
+     */
+    private String allowedTools = "";
+
+    /** U7：单次 tools/call 超时（主链路内使用）；不配置则沿用 requestTimeout。 */
+    private Duration toolCallTimeout = Duration.ofSeconds(3);
+
     private Duration connectTimeout = Duration.ofSeconds(5);
 
     private Duration requestTimeout = Duration.ofSeconds(30);
@@ -74,6 +84,22 @@ public class McpProperties {
 
     public void setRequestTimeout(Duration requestTimeout) {
         this.requestTimeout = requestTimeout;
+    }
+
+    public String getAllowedTools() {
+        return allowedTools;
+    }
+
+    public void setAllowedTools(String allowedTools) {
+        this.allowedTools = allowedTools;
+    }
+
+    public Duration getToolCallTimeout() {
+        return toolCallTimeout;
+    }
+
+    public void setToolCallTimeout(Duration toolCallTimeout) {
+        this.toolCallTimeout = toolCallTimeout;
     }
 }
 

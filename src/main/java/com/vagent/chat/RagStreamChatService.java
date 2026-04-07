@@ -17,9 +17,12 @@ import com.vagent.orchestration.model.ChatBranch;
 import com.vagent.orchestration.model.IntentResult;
 import com.vagent.orchestration.model.RewriteResult;
 import com.vagent.user.UserIdFormats;
+import com.vagent.mcp.client.McpClient;
+import com.vagent.mcp.config.McpProperties;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
@@ -65,6 +68,8 @@ public class RagStreamChatService {
     private final QueryRewriteService queryRewriteService;
     private final IntentResolutionService intentResolutionService;
     private final OrchestrationProperties orchestrationProperties;
+    private final ObjectProvider<McpClient> mcpClientProvider;
+    private final McpProperties mcpProperties;
 
     public RagStreamChatService(
             ConversationService conversationService,
@@ -77,6 +82,8 @@ public class RagStreamChatService {
             QueryRewriteService queryRewriteService,
             IntentResolutionService intentResolutionService,
             OrchestrationProperties orchestrationProperties,
+            ObjectProvider<McpClient> mcpClientProvider,
+            McpProperties mcpProperties,
             @Qualifier("llmStreamExecutor") Executor llmStreamExecutor) {
         this.conversationService = conversationService;
         this.messageService = messageService;
@@ -88,6 +95,8 @@ public class RagStreamChatService {
         this.queryRewriteService = queryRewriteService;
         this.intentResolutionService = intentResolutionService;
         this.orchestrationProperties = orchestrationProperties;
+        this.mcpClientProvider = mcpClientProvider;
+        this.mcpProperties = mcpProperties;
         this.llmStreamExecutor = llmStreamExecutor;
     }
 
@@ -138,10 +147,20 @@ public class RagStreamChatService {
 
         List<RetrieveHit> hits;
         String systemText;
+        String toolMetaName = null;
+        boolean toolUsed = false;
         if (branch == ChatBranch.SYSTEM_DIALOG) {
             hits = List.of();
             systemText = buildSystemDialogPrompt();
         } else {
+            // U7：工具意图命中时，可在 RAG 编排中调用 MCP 工具，并把结果并入系统提示词。
+            String toolContextText = null;
+            if (branch == ChatBranch.RAG && intent != null && intent.toolIntent()) {
+                toolMetaName = intent.optionalToolName().orElse(orchestrationProperties.getToolIntentDefaultToolName());
+                toolContextText = tryCallToolForContext(toolMetaName, userMessage);
+                toolUsed = toolContextText != null && !toolContextText.isBlank();
+            }
+
             hits = knowledgeRetrieveService.searchForRag(userId, rewrite.retrievalQuery(), ragProperties);
             if (branch == ChatBranch.RAG
                     && hits.isEmpty()
@@ -152,7 +171,7 @@ public class RagStreamChatService {
                                         emitter, taskId, conversationId, userCompact));
                 return emitter;
             }
-            systemText = buildKnowledgeSystemPrompt(hits);
+            systemText = buildSystemPromptWithToolAndKnowledge(toolContextText, hits);
         }
 
         if (log.isDebugEnabled()) {
@@ -166,7 +185,17 @@ public class RagStreamChatService {
         final int hitCount = hits.size();
         final String branchName = branch.name();
         llmStreamExecutor.execute(
-                () -> runAsyncStream(emitter, taskId, prepared, conversationId, userCompact, hitCount, branchName));
+                () ->
+                        runAsyncStream(
+                                emitter,
+                                taskId,
+                                prepared,
+                                conversationId,
+                                userCompact,
+                                hitCount,
+                                branchName,
+                                toolUsed,
+                                toolMetaName));
         return emitter;
     }
 
@@ -177,9 +206,11 @@ public class RagStreamChatService {
             String conversationId,
             String userCompact,
             int hitCount,
-            String branch) {
+            String branch,
+            boolean toolUsed,
+            String toolName) {
         try {
-            sendMeta(emitter, taskId, hitCount, branch);
+            sendMeta(emitter, taskId, hitCount, branch, toolUsed, toolName);
             StringBuilder assistantBuffer = new StringBuilder();
             llmSseStreamingBridge.streamChatToSse(
                     emitter,
@@ -242,12 +273,18 @@ public class RagStreamChatService {
         }
     }
 
-    private void sendMeta(SseEmitter emitter, String taskId, int hitCount, String branch) throws IOException {
+    private void sendMeta(
+            SseEmitter emitter, String taskId, int hitCount, String branch, boolean toolUsed, String toolName)
+            throws IOException {
         Map<String, Object> meta = new LinkedHashMap<>();
         meta.put("type", "meta");
         meta.put("taskId", taskId);
         meta.put("hitCount", hitCount);
         meta.put("branch", branch);
+        meta.put("toolUsed", toolUsed);
+        if (toolUsed && toolName != null && !toolName.isBlank()) {
+            meta.put("toolName", toolName);
+        }
         sendEvent(emitter, meta);
     }
 
@@ -286,6 +323,67 @@ public class RagStreamChatService {
             String body = h.getContent();
             sb.append(body != null ? body : "").append("\n\n");
         }
+        return sb.toString();
+    }
+
+    private String buildSystemPromptWithToolAndKnowledge(String toolContextText, List<RetrieveHit> hits) {
+        String base = buildKnowledgeSystemPrompt(hits);
+        if (toolContextText == null || toolContextText.isBlank()) {
+            return base;
+        }
+        return "你是企业场景下的助手。除知识库检索片段外，下方还包含工具调用返回的上下文信息。"
+                + "请优先依据可验证的信息作答；若工具与知识库冲突，以知识库与明确证据为准。\n\n"
+                + toolContextText
+                + "\n\n"
+                + base;
+    }
+
+    private String tryCallToolForContext(String toolName, String userMessage) {
+        if (toolName == null || toolName.isBlank()) {
+            return null;
+        }
+        if (!mcpProperties.isEnabled()) {
+            return null;
+        }
+        McpClient client = mcpClientProvider.getIfAvailable();
+        if (client == null) {
+            return null;
+        }
+        if (!isToolAllowed(toolName, mcpProperties.getAllowedTools())) {
+            return null;
+        }
+
+        try {
+            Map<String, Object> args = Map.of();
+            if ("echo".equals(toolName)) {
+                args = Map.of("message", userMessage != null ? userMessage : "");
+            }
+            Map<String, Object> result = client.callTool(toolName, args);
+            return buildToolContextPrompt(toolName, result);
+        } catch (Exception e) {
+            log.warn("mcp tool call failed: tool={}", toolName, e);
+            return null;
+        }
+    }
+
+    private static boolean isToolAllowed(String toolName, String csvAllowed) {
+        if (csvAllowed == null || csvAllowed.isBlank()) {
+            return false;
+        }
+        String[] parts = csvAllowed.split(",");
+        for (String p : parts) {
+            if (toolName.equals(p.trim())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static String buildToolContextPrompt(String toolName, Map<String, Object> result) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("## 工具上下文\n");
+        sb.append("- tool: ").append(toolName).append("\n");
+        sb.append("- result: ").append(result != null ? result.toString() : "{}").append("\n");
         return sb.toString();
     }
 
