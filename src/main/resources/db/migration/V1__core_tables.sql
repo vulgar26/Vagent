@@ -1,8 +1,7 @@
--- 核心业务表（与 PostgreSQL 模式兼容；test profile / H2 仅加载本文件）。
--- 真实 PostgreSQL 环境以 Flyway db/migration/V1__core_tables.sql 为权威 DDL。
--- 主键改为 VARCHAR(36) 以避免 CHAR 右填充空格引发的 ID/JWT/路由问题；MyBatis-Plus ASSIGN_UUID。
+-- 核心业务表（PostgreSQL）；与 schema-core.sql 语义一致，由 Flyway 版本化管理。
+-- 主键 VARCHAR(36)，与 MyBatis-Plus ASSIGN_UUID、JWT subject 一致。
 
-CREATE TABLE IF NOT EXISTS users (
+CREATE TABLE users (
     id VARCHAR(36) NOT NULL PRIMARY KEY,
     username VARCHAR(64) NOT NULL,
     password_hash VARCHAR(255) NOT NULL,
@@ -10,15 +9,14 @@ CREATE TABLE IF NOT EXISTS users (
     CONSTRAINT uk_users_username UNIQUE (username)
 );
 
-CREATE TABLE IF NOT EXISTS conversations (
+CREATE TABLE conversations (
     id VARCHAR(36) NOT NULL PRIMARY KEY,
     user_id VARCHAR(36) NOT NULL REFERENCES users (id),
     title VARCHAR(256) NULL,
     created_at TIMESTAMP(6) NOT NULL
 );
 
--- 会话内多轮消息（仅 USER/ASSISTANT 落库；SYSTEM 由编排层即时拼装，不存表）
-CREATE TABLE IF NOT EXISTS messages (
+CREATE TABLE messages (
     id VARCHAR(36) NOT NULL PRIMARY KEY,
     conversation_id VARCHAR(36) NOT NULL REFERENCES conversations (id) ON DELETE CASCADE,
     user_id VARCHAR(36) NOT NULL REFERENCES users (id),
@@ -27,4 +25,4 @@ CREATE TABLE IF NOT EXISTS messages (
     created_at TIMESTAMP(6) NOT NULL
 );
 
-CREATE INDEX IF NOT EXISTS idx_messages_conversation_created ON messages (conversation_id, created_at);
+CREATE INDEX idx_messages_conversation_created ON messages (conversation_id, created_at);

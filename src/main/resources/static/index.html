@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Vagent 简易控制台</title>
+  <link rel="stylesheet" href="/css/app.css"/>
+</head>
+<body>
+<main class="wrap">
+  <h1>Vagent</h1>
+  <p class="muted">注册 / 登录后创建会话，SSE 流式对话（本页由 Spring Boot <code>static</code> 提供）。</p>
+
+  <section>
+    <h2>API 基址</h2>
+    <input type="text" id="baseUrl" placeholder="http://localhost:8080" />
+  </section>
+
+  <section class="grid">
+    <div>
+      <h2>注册</h2>
+      <input type="text" id="regUser" placeholder="用户名"/>
+      <input type="password" id="regPass" placeholder="密码"/>
+      <button type="button" id="btnReg">注册</button>
+    </div>
+    <div>
+      <h2>登录</h2>
+      <input type="text" id="loginUser" placeholder="用户名"/>
+      <input type="password" id="loginPass" placeholder="密码"/>
+      <button type="button" id="btnLogin">登录</button>
+    </div>
+  </section>
+
+  <p id="authStatus" class="status muted">未登录</p>
+
+  <section>
+    <h2>会话</h2>
+    <button type="button" id="btnNewConv">创建会话</button>
+    <span class="muted" id="convId"></span>
+  </section>
+
+  <section>
+    <h2>消息（SSE）</h2>
+    <textarea id="msg" rows="3" placeholder="输入后发送；可试 tool=echo message=hi 或 工具:echo message=hi（需后端开启 MCP + 工具意图）"></textarea>
+    <button type="button" id="btnSend">发送</button>
+    <h3>输出</h3>
+    <pre id="out" class="out"></pre>
+  </section>
+</main>
+<script src="/js/app.js"></script>
+</body>
+</html>

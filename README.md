@@ -21,6 +21,7 @@
 | **U4** | **可观测**：MDC `traceId`、`vagent.rag.retrieve` / `vagent.chat.stream` 指标；生产 DDL 建议 Flyway（见 U4 文档） |
 | **U5** | **第二路检索**：全表向量 + 与主路合并去重（`vagent.rag.second-path.*`，默认关） |
 | **U6** | **MCP（独立进程）**：Vagent 作为 MCP Client（HTTP），提供 `/api/v1/mcp/*` 联调入口（默认关） |
+| **U7** | **工具进主链路**：`tool=`、`/tool`、`工具:` 显式触发 + 白名单；`GET /api/v1/mcp/settings` 看 MCP 开关与白名单 |
 
 - [docs/Vagent-项目介绍.md](docs/Vagent-项目介绍.md)（**项目详细介绍**：定位、模块、主链路、数据、API、配置）
 - [docs/Vagent-项目策划书.md](docs/Vagent-项目策划书.md)（立项与 §3 主链路规格）
@@ -91,7 +92,34 @@ docker compose up -d
 ### MCP（U6）
 
 - Vagent 作为 **MCP Client（HTTP）**，用于联调独立进程的 MCP Server（当前为 **JSON-only** 响应模式）。默认关闭：`vagent.mcp.enabled=false`。
-- 联调 API：`GET /api/v1/mcp/tools`、`POST /api/v1/mcp/tools/{name}`（需登录）。详见 [docs/U6-实现说明.md](docs/U6-实现说明.md)。
+- 联调 API：`GET /api/v1/mcp/tools`、`POST /api/v1/mcp/tools/{name}`（需登录，且 MCP 启用时才有 Client Bean）。  
+- **`GET /api/v1/mcp/settings`**：返回开关、`baseUrl`、协议版本、**白名单**等（不依赖 MCP Server 可达）。详见 [docs/U6-实现说明.md](docs/U6-实现说明.md)、[docs/U7-实现说明.md](docs/U7-实现说明.md)。
+
+### 简易前端（静态页）
+
+- 启动后浏览器打开 **`http://localhost:8080/`**（或 **`/index.html`**）：注册 / 登录、创建会话、用 **fetch** 读 **SSE** 流（带 `Authorization`）。  
+- 源码在 `src/main/resources/static/`（`css/`、`js/`），与后端同域部署，无需单独 CORS。
+
+### 数据库迁移（Flyway）
+
+- **PostgreSQL**：启动时由 **Flyway** 执行 `src/main/resources/db/migration/V1__*.sql`、`V2__*.sql`；`spring.sql.init.mode` 默认为 **`never`**，避免与 migration 重复建表。  
+- **H2 单测**：`test` profile 关闭 Flyway，仍用 `schema-core.sql` 初始化。  
+- **Testcontainers（M2）**：动态属性仍会执行 `schema-core.sql` + `schema-vector.sql`。  
+- 若库中**已有旧表**且从未跑过 Flyway，需**空库重建**或对当前库执行一次 **`flyway baseline`**（见 [Flyway 文档](https://documentation.red-gate.com/flyway)），否则会与 `V1` 冲突。
+
+### 容器镜像与 Kubernetes（演示）
+
+1. **构建 JAR**：`mvn -DskipTests package`  
+2. **镜像**：仓库根目录 `Dockerfile`，`docker build -t vagent:local .`（需先有 `target/vagent-0.1.0-SNAPSHOT.jar`）。  
+3. **K8s 示例清单**：`deploy/k8s/`（命名空间 `vagent-demo`、PostgreSQL + Vagent Deployment/Service）。**先修改 Secret 中的密码与 JWT 密钥**，再：
+
+```bash
+kubectl apply -f deploy/k8s/
+kubectl -n vagent-demo wait --for=condition=available deployment/vagent --timeout=120s
+kubectl -n vagent-demo port-forward svc/vagent 8080:8080
+```
+
+**K8s** 是把应用在**多副本 Pod**里跑、用 **Service** 做内网发现、用 **Deployment** 做滚动升级的编排工具；简历里常与 **Docker**、**Helm**、**CI/CD** 一起出现。本仓库清单仅作学习与演示，生产需 Ingress、持久卷、密钥管理与资源配额等（见 `deploy/k8s/README.md`）。
 
 ## 环境
 
@@ -114,9 +142,9 @@ GRANT ALL ON SCHEMA public TO vagent;
 ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO vagent;
 ```
 
-启动应用时会依次执行 `src/main/resources/schema-core.sql`、`schema-vector.sql`（`spring.sql.init.mode=always`）；**生产建议改为迁移工具并关闭 always**。
+**PostgreSQL 运行时 DDL** 以 **`db/migration`** 为准；`schema-core.sql` / `schema-vector.sql` 仍保留作说明与 H2 / 集成测试引用。
 
-**M2 / U2**：`schema-vector.sql` 内含 `CREATE EXTENSION IF NOT EXISTS vector` 与 `kb_*` 表；向量维度默认 **1024**，与 `vagent.embedding.dimensions`、`KbChunkMapper` 中 `vector(1024)` 须一致（从旧版 128 升级须见 [U2-实现说明.md](docs/U2-实现说明.md)）。
+**M2 / U2**：`V2__pgvector_kb.sql` / `schema-vector.sql` 内含 `CREATE EXTENSION IF NOT EXISTS vector` 与 `kb_*` 表；向量维度默认 **1024**，与 `vagent.embedding.dimensions`、`KbChunkMapper` 中 `vector(1024)` 须一致（从旧版 128 升级须见 [U2-实现说明.md](docs/U2-实现说明.md)）。
 
 ## 构建与测试
 
@@ -158,6 +186,7 @@ mvn spring-boot:run
 - `POST /api/v1/conversations` — 可选 body：`{"title":"..."}`
 - `POST /api/v1/kb/documents` — `{"title":"...","content":"..."}`（需 Bearer）
 - `POST /api/v1/kb/retrieve` — `{"query":"...","topK":5}`（需 Bearer）
+- `GET /api/v1/mcp/settings` — MCP 开关与白名单（需 Bearer）
 - `POST /api/v1/conversations/{conversationId}/chat/stream` — `{"message":"..."}`，响应 **SSE**（`text/event-stream`）；首条 JSON 含 `taskId`；**M4** 起 RAG 模式含 **`hitCount`**；**M5** 起另含 **`branch`**（`RAG` / `SYSTEM_DIALOG` / `CLARIFICATION`）
 - `POST /api/v1/chat/tasks/{taskId}/cancel` — 取消对应流式任务（204，任务不存在或无权则 404）
 

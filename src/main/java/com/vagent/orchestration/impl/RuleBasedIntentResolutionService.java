@@ -24,6 +24,9 @@ public class RuleBasedIntentResolutionService implements IntentResolutionService
             Pattern.compile("(?i)(?:^|\\s)tool\\s*=\\s*([a-zA-Z0-9_\\-]+)(?:\\s|$)");
     private static final Pattern TOOL_SLASH_PATTERN =
             Pattern.compile("(?i)(?:^|\\s)/tool\\s+([a-zA-Z0-9_\\-]+)(?:\\s|$)");
+    /** 中文显式指令：行首「工具:echo」或「工具：ping」（全角冒号） */
+    private static final Pattern TOOL_COLON_PATTERN =
+            Pattern.compile("(?i)^\\s*工具\\s*[:：]\\s*([a-zA-Z0-9_\\-]+)\\s*");
     private static final Pattern TOOL_ARG_PATTERN =
             Pattern.compile("(?i)([a-zA-Z0-9_\\-]+)\\s*=\\s*(\"([^\"]*)\"|'([^']*)'|([^\\s]+))");
 
@@ -59,6 +62,10 @@ public class RuleBasedIntentResolutionService implements IntentResolutionService
             if (inv != null && inv.toolName != null && !inv.toolName.isBlank()) {
                 return new IntentResult(ChatBranch.RAG, true, inv.toolName, inv.arguments);
             }
+            ToolInvocation colon = parseToolColonDirective(t);
+            if (colon != null && colon.toolName != null && !colon.toolName.isBlank()) {
+                return new IntentResult(ChatBranch.RAG, true, colon.toolName, colon.arguments);
+            }
             for (String kw : splitPrefixes(properties.getToolIntentKeywords())) {
                 if (kw.isEmpty()) {
                     continue;
@@ -69,6 +76,16 @@ public class RuleBasedIntentResolutionService implements IntentResolutionService
             }
         }
         return new IntentResult(ChatBranch.RAG);
+    }
+
+    private static ToolInvocation parseToolColonDirective(String rawTrimmed) {
+        Matcher m = TOOL_COLON_PATTERN.matcher(rawTrimmed);
+        if (m.find()) {
+            String toolName = m.group(1);
+            Map<String, Object> args = parseArgsFromTail(rawTrimmed.substring(m.end()));
+            return new ToolInvocation(toolName, args);
+        }
+        return null;
     }
 
     private static ToolInvocation parseExplicitToolInvocation(String rawTrimmed) {

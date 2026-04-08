@@ -66,6 +66,22 @@ class RuleBasedIntentResolutionServiceTest {
     }
 
     @Test
+    void tool_intent_parses_chinese_colon_directive() {
+        OrchestrationProperties p = new OrchestrationProperties();
+        p.setToolIntentEnabled(true);
+        RuleBasedIntentResolutionService svc = new RuleBasedIntentResolutionService(p);
+
+        var r = svc.resolve("工具:echo message=你好");
+        assertThat(r.branch()).isEqualTo(ChatBranch.RAG);
+        assertThat(r.toolIntent()).isTrue();
+        assertThat(r.optionalToolName()).contains("echo");
+        assertThat(r.safeToolArguments()).containsEntry("message", "你好");
+
+        var r2 = svc.resolve("工具：ping");
+        assertThat(r2.optionalToolName()).contains("ping");
+    }
+
+    @Test
     void tool_intent_parses_quoted_args() {
         OrchestrationProperties p = new OrchestrationProperties();
         p.setToolIntentEnabled(true);

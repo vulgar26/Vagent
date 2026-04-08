@@ -1,0 +1,73 @@
+apiVersion: v1
+kind: Secret
+metadata:
+  name: vagent-app-secret
+  namespace: vagent-demo
+type: Opaque
+stringData:
+  # 至少 32 字符；部署前请替换为随机串（与 application.yml 默认值相同仅作演示）
+  jwt-secret: "0123456789abcdef0123456789abcdef"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: vagent
+  namespace: vagent-demo
+spec:
+  selector:
+    app: vagent
+  ports:
+    - port: 8080
+      targetPort: 8080
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vagent
+  namespace: vagent-demo
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: vagent
+  template:
+    metadata:
+      labels:
+        app: vagent
+    spec:
+      containers:
+        - name: vagent
+          image: vagent:local
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8080
+          env:
+            - name: SPRING_DATASOURCE_URL
+              value: jdbc:postgresql://postgres:5432/vagent
+            - name: SPRING_DATASOURCE_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-secret
+                  key: username
+            - name: SPRING_DATASOURCE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-secret
+                  key: password
+            - name: VAGENT_SECURITY_JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: vagent-app-secret
+                  key: jwt-secret
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: 8080
+            initialDelaySeconds: 45
+            periodSeconds: 20
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: 8080
+            initialDelaySeconds: 25
+            periodSeconds: 10

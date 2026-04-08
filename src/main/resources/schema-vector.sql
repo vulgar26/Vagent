@@ -1,4 +1,5 @@
 -- 向量知识库（仅真实 PostgreSQL + pgvector；勿加入仅 H2 的 test profile）。
+-- 权威 DDL 见 Flyway db/migration/V2__pgvector_kb.sql。
 -- 需超级用户或已授权角色先安装扩展：CREATE EXTENSION IF NOT EXISTS vector;
 
 CREATE EXTENSION IF NOT EXISTS vector;

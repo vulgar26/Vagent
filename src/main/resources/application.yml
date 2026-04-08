@@ -27,13 +27,13 @@ spring:
     username: postgres
     password: postgres
     driver-class-name: org.postgresql.Driver
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
   sql:
     init:
-      # 开发期执行 DDL；生产建议 never + Flyway/Liquibase（向量扩展需超级用户先装一次）
-      mode: always
-      schema-locations:
-        - classpath:schema-core.sql
-        - classpath:schema-vector.sql
+      # 生产与本地 PG：DDL 由 Flyway 执行；勿与 migration 重复跑 spring.sql.init
+      mode: never
 
 mybatis-plus:
   configuration:
