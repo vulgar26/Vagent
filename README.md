@@ -27,6 +27,7 @@
 - [docs/Vagent-项目策划书.md](docs/Vagent-项目策划书.md)（立项与 §3 主链路规格）
 - [docs/Vagent-升级策划书.md](docs/Vagent-升级策划书.md)（**M6 后**：对齐 Ragent、**通义千问**、U1–U6 阶段）
 - [docs/DECISIONS.md](docs/DECISIONS.md)（与策划书 §3 / Ragent 主链路的差异说明，**必读**）
+- [docs/工程折中与生产对照.md](docs/工程折中与生产对照.md)（教学简化、最小改动 vs 生产常见做法，**决策清单**）
 - [docs/M0-实现说明.md](docs/M0-实现说明.md)（含 LLM 模块流程图与表）
 - [docs/M1-实现说明.md](docs/M1-实现说明.md)（含 M1 各模块图与表）
 - [docs/M2-实现说明.md](docs/M2-实现说明.md)（M2：向量表、嵌入、KB API、测试说明）
