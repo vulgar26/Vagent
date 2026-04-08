@@ -71,7 +71,7 @@ vagent:
   # U6：MCP（独立 Python Server，HTTP）。默认关闭；启用后可用 /api/v1/mcp/* 联调工具列表与调用。
   mcp:
     enabled: false
-    base-url: http://127.0.0.1:8765/mcp
+    base-url: http://127.0.0.1:8766/mcp
     token: ${MCP_TOKEN:}
     protocol-version: 2025-03-26
     # U7：主链路工具调用白名单（逗号分隔）。为空则主链路不允许任何工具（仍可用 /api/v1/mcp/* 联调）。

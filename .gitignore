@@ -38,3 +38,6 @@ build/
 ### JVM crash logs ###
 hs_err_pid*.log
 replay_pid*.log
+
+### Local overrides (secrets / MCP / LLM) ###
+src/main/resources/application-local.yml

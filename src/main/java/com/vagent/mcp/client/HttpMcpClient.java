@@ -11,6 +11,7 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.net.http.HttpTimeoutException;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -42,6 +43,8 @@ public final class HttpMcpClient implements McpClient {
         this.meterRegistry = meterRegistry;
         this.httpClient =
                 HttpClient.newBuilder()
+                        // uvicorn 默认不支持 h2c 升级；强制 HTTP/1.1 避免 "Unsupported upgrade request" 400
+                        .version(HttpClient.Version.HTTP_1_1)
                         .connectTimeout(nonNull(properties.getConnectTimeout(), Duration.ofSeconds(5)))
                         .build();
     }
@@ -117,7 +120,11 @@ public final class HttpMcpClient implements McpClient {
             if (params != null && !params.isEmpty()) {
                 req.set("params", params);
             }
-            JsonNode response = postJsonRpc(req, true);
+            Duration timeout = null;
+            if ("tools/call".equals(method)) {
+                timeout = properties.getToolCallTimeout();
+            }
+            JsonNode response = postJsonRpc(req, true, timeout);
             JsonNode error = response.get("error");
             if (error != null && !error.isNull()) {
                 throw new IllegalStateException("MCP error: " + error.toString());
@@ -145,7 +152,7 @@ public final class HttpMcpClient implements McpClient {
             if (params != null && !params.isEmpty()) {
                 req.set("params", params);
             }
-            postJsonRpc(req, false);
+            postJsonRpc(req, false, null);
         } catch (RuntimeException e) {
             outcome = "error";
             throw e;
@@ -154,7 +161,7 @@ public final class HttpMcpClient implements McpClient {
         }
     }
 
-    private JsonNode postJsonRpc(ObjectNode payload, boolean expectJsonResponse) {
+    private JsonNode postJsonRpc(ObjectNode payload, boolean expectJsonResponse, Duration overrideTimeout) {
         String baseUrl = properties.getBaseUrl();
         if (baseUrl == null || baseUrl.isBlank()) {
             throw new IllegalStateException("vagent.mcp.base-url is blank");
@@ -175,9 +182,11 @@ public final class HttpMcpClient implements McpClient {
         HttpRequest.Builder b =
                 HttpRequest.newBuilder()
                         .uri(URI.create(trimTrailingSlash(baseUrl)))
-                        .timeout(nonNull(properties.getRequestTimeout(), Duration.ofSeconds(30)))
+                        .timeout(nonNull(overrideTimeout, nonNull(properties.getRequestTimeout(), Duration.ofSeconds(30))))
                         .header("Content-Type", "application/json")
-                        .header("Accept", expectJsonResponse ? "application/json" : "*/*")
+                        // Python MCP (streamable-http json_response) expects client to accept application/json,
+                        // even for notifications that may return an empty body.
+                        .header("Accept", "application/json")
                         .header("mcp-protocol-version", safeProtocolVersion())
                         .POST(HttpRequest.BodyPublishers.ofString(body, StandardCharsets.UTF_8));
 
@@ -205,6 +214,8 @@ public final class HttpMcpClient implements McpClient {
                 }
                 return objectMapper.createObjectNode();
             }
+        } catch (HttpTimeoutException e) {
+            throw new IllegalStateException("MCP HTTP request timeout", e);
         } catch (Exception e) {
             throw new IllegalStateException("MCP HTTP request failed", e);
         }

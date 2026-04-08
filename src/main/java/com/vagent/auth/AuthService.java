@@ -75,6 +75,6 @@ public class AuthService {
                 token,
                 "Bearer",
                 jwtProperties.getExpirationSeconds(),
-                user.getId());
+                user.getId() != null ? user.getId().trim() : "");
     }
 }

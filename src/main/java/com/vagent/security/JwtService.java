@@ -48,9 +48,11 @@ public class JwtService {
     public String createAccessToken(User user) {
         Instant now = Instant.now();
         Instant exp = now.plusSeconds(properties.getExpirationSeconds());
+        String subject = user != null && user.getId() != null ? user.getId().trim() : "";
+        String uname = user != null && user.getUsername() != null ? user.getUsername().trim() : "";
         return Jwts.builder()
-                .subject(user.getId())
-                .claim("uname", user.getUsername())
+                .subject(subject)
+                .claim("uname", uname)
                 .issuedAt(Date.from(now))
                 .expiration(Date.from(exp))
                 .signWith(key)
@@ -68,6 +70,9 @@ public class JwtService {
                 .getPayload();
         UUID userId = parseUserIdFromSubject(claims.getSubject());
         String username = claims.get("uname", String.class);
+        if (username != null) {
+            username = username.trim();
+        }
         return new VagentUserPrincipal(userId, username);
     }
 
@@ -75,7 +80,11 @@ public class JwtService {
      * MyBatis-Plus {@code IdType.ASSIGN_UUID} 可能生成无连字符的 32 位十六进制；{@link UUID#fromString} 需要标准带连字符形式。
      */
     static UUID parseUserIdFromSubject(String subject) {
-        if (subject == null || subject.isBlank()) {
+        if (subject == null) {
+            throw new JwtException("JWT subject 为空");
+        }
+        subject = subject.trim();
+        if (subject.isBlank()) {
             throw new JwtException("JWT subject 为空");
         }
         if (subject.length() == 32 && subject.indexOf('-') < 0) {

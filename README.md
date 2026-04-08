@@ -39,6 +39,7 @@
 - [docs/U4-实现说明.md](docs/U4-实现说明.md)（U4：traceId、Micrometer、Flyway 建议）
 - [docs/U5-实现说明.md](docs/U5-实现说明.md)（U5：第二路全局向量、合并、安全说明）
 - [docs/U6-实现说明.md](docs/U6-实现说明.md)（U6：MCP Client（HTTP）、联调 API）
+- [docs/U7-实现说明.md](docs/U7-实现说明.md)（U7：MCP 工具并入主链路（显式触发））
 - [docs/面试准备.md](docs/面试准备.md)（架构口述、追问答法；面试相关内容持续更新）
 
 ## 可选：Docker Compose（PostgreSQL + pgvector）

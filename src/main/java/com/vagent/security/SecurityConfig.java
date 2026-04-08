@@ -2,6 +2,7 @@ package com.vagent.security;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.vagent.observability.TraceIdMdcFilter;
+import com.vagent.user.UserMapper;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -34,21 +35,26 @@ import java.util.List;
 @EnableConfigurationProperties(JwtProperties.class)
 public class SecurityConfig {
 
-    private final JwtAuthenticationFilter jwtAuthenticationFilter;
     private final TraceIdMdcFilter traceIdMdcFilter;
     private final ObjectMapper objectMapper;
+    private final JwtService jwtService;
+    private final UserMapper userMapper;
 
     public SecurityConfig(
-            JwtAuthenticationFilter jwtAuthenticationFilter,
             TraceIdMdcFilter traceIdMdcFilter,
-            ObjectMapper objectMapper) {
-        this.jwtAuthenticationFilter = jwtAuthenticationFilter;
+            ObjectMapper objectMapper,
+            JwtService jwtService,
+            UserMapper userMapper) {
         this.traceIdMdcFilter = traceIdMdcFilter;
         this.objectMapper = objectMapper;
+        this.jwtService = jwtService;
+        this.userMapper = userMapper;
     }
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+        // 只在 Spring Security 过滤器链中使用，避免作为 Servlet Filter 自动注册导致 order 报错
+        JwtAuthenticationFilter jwtAuthenticationFilter = new JwtAuthenticationFilter(jwtService, userMapper);
         http
                 .csrf(AbstractHttpConfigurer::disable)
                 .cors(c -> c.configurationSource(corsConfigurationSource()))
@@ -64,7 +70,8 @@ public class SecurityConfig {
                     response.getWriter().write(objectMapper.writeValueAsString(
                             java.util.Map.of("error", "UNAUTHORIZED", "message", "需要登录或令牌无效")));
                 }))
-                .addFilterBefore(traceIdMdcFilter, JwtAuthenticationFilter.class)
+                // TraceId 需要尽早设置，但 JwtAuthenticationFilter 属于自定义 Filter，无法作为“有序参考 Filter”使用
+                .addFilterBefore(traceIdMdcFilter, UsernamePasswordAuthenticationFilter.class)
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
         return http.build();
     }

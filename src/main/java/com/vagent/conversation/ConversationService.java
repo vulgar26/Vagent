@@ -35,7 +35,11 @@ public class ConversationService {
     @Transactional(readOnly = true)
     public Optional<Conversation> findOwnedByUser(String conversationId, UUID userId) {
         String uid = UserIdFormats.compact(userId);
-        Conversation c = conversationMapper.selectById(conversationId);
+        String cid = conversationId == null ? "" : conversationId.trim();
+        if (cid.isEmpty()) {
+            return Optional.empty();
+        }
+        Conversation c = conversationMapper.selectById(cid);
         if (c == null || !uid.equals(c.getUserId())) {
             return Optional.empty();
         }
@@ -77,7 +81,7 @@ public class ConversationService {
 
     private ConversationResponse toResponse(Conversation c) {
         return new ConversationResponse(
-                c.getId(),
+                c.getId() != null ? c.getId().trim() : "",
                 c.getTitle(),
                 c.getCreatedAt().atOffset(ZoneOffset.UTC).toInstant());
     }

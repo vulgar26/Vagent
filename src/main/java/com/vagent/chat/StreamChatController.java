@@ -28,6 +28,7 @@ public class StreamChatController {
             @AuthenticationPrincipal VagentUserPrincipal principal,
             @PathVariable String conversationId,
             @Valid @RequestBody StreamChatRequest request) {
-        return streamChatService.stream(principal.getUserId(), conversationId, request.getMessage());
+        String cid = conversationId != null ? conversationId.trim() : "";
+        return streamChatService.stream(principal.getUserId(), cid, request.getMessage());
     }
 }

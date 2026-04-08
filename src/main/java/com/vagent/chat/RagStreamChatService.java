@@ -35,6 +35,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.Executor;
+import java.util.Locale;
 
 import static org.springframework.http.HttpStatus.NOT_FOUND;
 
@@ -149,6 +150,8 @@ public class RagStreamChatService {
         String systemText;
         String toolMetaName = null;
         boolean toolUsed = false;
+        String toolOutcome = null;
+        String toolError = null;
         if (branch == ChatBranch.SYSTEM_DIALOG) {
             hits = List.of();
             systemText = buildSystemDialogPrompt();
@@ -157,8 +160,11 @@ public class RagStreamChatService {
             String toolContextText = null;
             if (branch == ChatBranch.RAG && intent != null && intent.toolIntent()) {
                 toolMetaName = intent.optionalToolName().orElse(orchestrationProperties.getToolIntentDefaultToolName());
-                toolContextText = tryCallToolForContext(toolMetaName, intent.safeToolArguments(), userMessage);
-                toolUsed = toolContextText != null && !toolContextText.isBlank();
+                ToolContextOutcome out = tryCallToolForContext(toolMetaName, intent.safeToolArguments(), userMessage);
+                toolContextText = out.contextText();
+                toolUsed = out.used();
+                toolOutcome = out.outcome();
+                toolError = out.error();
             }
 
             hits = knowledgeRetrieveService.searchForRag(userId, rewrite.retrievalQuery(), ragProperties);
@@ -184,6 +190,10 @@ public class RagStreamChatService {
 
         final int hitCount = hits.size();
         final String branchName = branch.name();
+        final boolean toolUsedFinal = toolUsed;
+        final String toolNameFinal = toolMetaName;
+        final String toolOutcomeFinal = toolOutcome;
+        final String toolErrorFinal = toolError;
         llmStreamExecutor.execute(
                 () ->
                         runAsyncStream(
@@ -194,8 +204,10 @@ public class RagStreamChatService {
                                 userCompact,
                                 hitCount,
                                 branchName,
-                                toolUsed,
-                                toolMetaName));
+                                toolUsedFinal,
+                                toolNameFinal,
+                                toolOutcomeFinal,
+                                toolErrorFinal));
         return emitter;
     }
 
@@ -208,9 +220,11 @@ public class RagStreamChatService {
             int hitCount,
             String branch,
             boolean toolUsed,
-            String toolName) {
+            String toolName,
+            String toolOutcome,
+            String toolError) {
         try {
-            sendMeta(emitter, taskId, hitCount, branch, toolUsed, toolName);
+            sendMeta(emitter, taskId, hitCount, branch, toolUsed, toolName, toolOutcome, toolError);
             StringBuilder assistantBuffer = new StringBuilder();
             llmSseStreamingBridge.streamChatToSse(
                     emitter,
@@ -258,7 +272,7 @@ public class RagStreamChatService {
             String branchName,
             int hitCount) {
         try {
-            sendMeta(emitter, taskId, hitCount, branchName);
+            sendMeta(emitter, taskId, hitCount, branchName, false, null, null, null);
             if (taskRegistry.isCancelled(taskId)) {
                 sendEvent(emitter, Map.of("type", "cancelled"));
                 emitter.complete();
@@ -274,7 +288,14 @@ public class RagStreamChatService {
     }
 
     private void sendMeta(
-            SseEmitter emitter, String taskId, int hitCount, String branch, boolean toolUsed, String toolName)
+            SseEmitter emitter,
+            String taskId,
+            int hitCount,
+            String branch,
+            boolean toolUsed,
+            String toolName,
+            String toolOutcome,
+            String toolError)
             throws IOException {
         Map<String, Object> meta = new LinkedHashMap<>();
         meta.put("type", "meta");
@@ -284,6 +305,12 @@ public class RagStreamChatService {
         meta.put("toolUsed", toolUsed);
         if (toolUsed && toolName != null && !toolName.isBlank()) {
             meta.put("toolName", toolName);
+        }
+        if (toolOutcome != null && !toolOutcome.isBlank()) {
+            meta.put("toolOutcome", toolOutcome);
+        }
+        if (toolError != null && !toolError.isBlank()) {
+            meta.put("toolError", toolError);
         }
         sendEvent(emitter, meta);
     }
@@ -338,28 +365,59 @@ public class RagStreamChatService {
                 + base;
     }
 
-    private String tryCallToolForContext(String toolName, Map<String, Object> toolArgs, String userMessage) {
+    private ToolContextOutcome tryCallToolForContext(String toolName, Map<String, Object> toolArgs, String userMessage) {
         if (toolName == null || toolName.isBlank()) {
-            return null;
+            return ToolContextOutcome.skipped();
         }
         if (!mcpProperties.isEnabled()) {
-            return null;
+            return ToolContextOutcome.skipped();
         }
         McpClient client = mcpClientProvider.getIfAvailable();
         if (client == null) {
-            return null;
+            return ToolContextOutcome.skipped();
         }
         if (!isToolAllowed(toolName, mcpProperties.getAllowedTools())) {
-            return null;
+            return ToolContextOutcome.skipped();
         }
 
         try {
             Map<String, Object> args = sanitizeToolArguments(toolName, toolArgs, userMessage);
             Map<String, Object> result = client.callTool(toolName, args);
-            return buildToolContextPrompt(toolName, result);
+            return ToolContextOutcome.used(buildToolContextPrompt(toolName, result));
         } catch (Exception e) {
             log.warn("mcp tool call failed: tool={}", toolName, e);
-            return null;
+            String msg = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
+            String outcome = isLikelyTimeout(e) ? "timeout" : "error";
+            return ToolContextOutcome.failed(outcome, msg);
+        }
+    }
+
+    private static boolean isLikelyTimeout(Throwable e) {
+        if (e == null) {
+            return false;
+        }
+        String m = e.getMessage();
+        if (m != null && m.toLowerCase(Locale.ROOT).contains("timeout")) {
+            return true;
+        }
+        Throwable c = e.getCause();
+        if (c != null && c != e) {
+            return isLikelyTimeout(c);
+        }
+        return false;
+    }
+
+    private record ToolContextOutcome(boolean used, String contextText, String outcome, String error) {
+        static ToolContextOutcome skipped() {
+            return new ToolContextOutcome(false, null, null, null);
+        }
+
+        static ToolContextOutcome used(String contextText) {
+            return new ToolContextOutcome(true, contextText, "success", null);
+        }
+
+        static ToolContextOutcome failed(String outcome, String error) {
+            return new ToolContextOutcome(false, null, outcome, error);
         }
     }
 

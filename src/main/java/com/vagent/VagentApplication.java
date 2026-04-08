@@ -1,6 +1,5 @@
 package com.vagent;
 
-import org.mybatis.spring.annotation.MapperScan;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.autoconfigure.security.servlet.UserDetailsServiceAutoConfiguration;
@@ -15,7 +14,7 @@ import org.springframework.boot.autoconfigure.security.servlet.UserDetailsServic
  * 可部署、可健康检查、后续要接 SSE/数据库/pgvector。Spring Boot 统一了配置、依赖注入、Actuator 等，
  * 后续控制器、服务、配置类都通过容器管理，避免手写工厂与生命周期。
  * <p>
- * <b>M1 补充：</b> {@link MapperScan} 扫描 {@code com.vagent} 包下的 {@code *Mapper} 接口；
+ * <b>M1 补充：</b> MyBatis Mapper 使用 {@code @Mapper} 标注并由 Starter 自动扫描；
  * 排除 {@link UserDetailsServiceAutoConfiguration}，认证走 JWT + {@link com.vagent.security.JwtAuthenticationFilter}。
  * <p>
  * <b>M2 补充：</b> 知识库（pgvector）与 {@link com.vagent.embedding.EmbeddingClient} 由配置装配；测试 profile 仅加载 {@code schema-core.sql}，向量表用 Testcontainers 集成测试覆盖。
@@ -39,7 +38,6 @@ import org.springframework.boot.autoconfigure.security.servlet.UserDetailsServic
  * <b>U5 补充：</b> {@link com.vagent.kb.KnowledgeRetrieveService#searchForRag} 可选第二路全表向量与 {@link com.vagent.kb.RetrieveHitMerge}，见 {@code docs/U5-实现说明.md}。
  * <p>
  */
-@MapperScan("com.vagent")
 @SpringBootApplication(exclude = {UserDetailsServiceAutoConfiguration.class})
 public class VagentApplication {
 
