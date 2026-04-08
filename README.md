@@ -46,7 +46,7 @@
 
 ## 可选：Docker Compose（PostgreSQL + pgvector）
 
-若本机未装 PostgreSQL，可用仓库根目录 **`docker-compose.yml`** 启动与 `application.yml` 默认一致的库：
+若本机未装 PostgreSQL，可用仓库根目录 **`docker-compose.yml`** 启动与 `application.yml` 默认一致的库（**`ragent` / `postgres`**）：
 
 ```bash
 docker compose up -d
@@ -128,6 +128,7 @@ kubectl -n vagent-demo port-forward svc/vagent 8080:8080
 - Maven 3.8+
 - **本地运行**：PostgreSQL 14+（或兼容版本），已创建库与用户（与 `application.yml` 一致）；**M2** 需能执行 `CREATE EXTENSION vector`（通常需超级用户先装扩展一次）
 - **JWT**：`vagent.security.jwt.remap-subject-by-username-when-user-missing` 默认为 **`false`**（`sub` 无对应用户即 401，需重新登录）；本地清库联调可在 `application-local.yml` 中设为 `true`，见 `application-local.example.yml`
+- **生产**：`application-prod.yml`（`--spring.profiles.active=prod`）要求 **`VAGENT_SECURITY_JWT_SECRET`**、收紧 **CORS**、仅暴露 **`health`**、默认 **DashScope** + **`empty-hits-behavior: no-llm`**；K8s 示例已为 Deployment 设置 `SPRING_PROFILES_ACTIVE=prod`，并须自行配置 **`DASHSCOPE_API_KEY`** 等密钥
 
 ### PostgreSQL 准备示例
 

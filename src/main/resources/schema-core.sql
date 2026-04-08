@@ -1,9 +1,8 @@
--- 核心业务表（与 PostgreSQL 模式兼容；test profile / H2 仅加载本文件）。
--- 真实 PostgreSQL 环境以 Flyway db/migration/V1__core_tables.sql 为权威 DDL。
--- 主键改为 VARCHAR(36) 以避免 CHAR 右填充空格引发的 ID/JWT/路由问题；MyBatis-Plus ASSIGN_UUID。
+-- 核心业务表（test profile / H2 MODE=PostgreSQL；列类型 uuid 与 Flyway V3+ 对齐）。
+-- 权威迁移：db/migration/V1 + V3（PostgreSQL）。
 
 CREATE TABLE IF NOT EXISTS users (
-    id VARCHAR(36) NOT NULL PRIMARY KEY,
+    id UUID NOT NULL PRIMARY KEY,
     username VARCHAR(64) NOT NULL,
     password_hash VARCHAR(255) NOT NULL,
     created_at TIMESTAMP(6) NOT NULL,
@@ -11,17 +10,16 @@ CREATE TABLE IF NOT EXISTS users (
 );
 
 CREATE TABLE IF NOT EXISTS conversations (
-    id VARCHAR(36) NOT NULL PRIMARY KEY,
-    user_id VARCHAR(36) NOT NULL REFERENCES users (id),
+    id UUID NOT NULL PRIMARY KEY,
+    user_id UUID NOT NULL REFERENCES users (id),
     title VARCHAR(256) NULL,
     created_at TIMESTAMP(6) NOT NULL
 );
 
--- 会话内多轮消息（仅 USER/ASSISTANT 落库；SYSTEM 由编排层即时拼装，不存表）
 CREATE TABLE IF NOT EXISTS messages (
-    id VARCHAR(36) NOT NULL PRIMARY KEY,
-    conversation_id VARCHAR(36) NOT NULL REFERENCES conversations (id) ON DELETE CASCADE,
-    user_id VARCHAR(36) NOT NULL REFERENCES users (id),
+    id UUID NOT NULL PRIMARY KEY,
+    conversation_id UUID NOT NULL REFERENCES conversations (id) ON DELETE CASCADE,
+    user_id UUID NOT NULL REFERENCES users (id),
     role VARCHAR(16) NOT NULL,
     content TEXT NOT NULL,
     created_at TIMESTAMP(6) NOT NULL

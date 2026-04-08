@@ -106,12 +106,12 @@ public class RagStreamChatService {
                 .findOwnedByUser(conversationId, userId)
                 .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "会话不存在或无权访问"));
 
-        String userCompact = UserIdFormats.compact(userId);
+        String userKey = UserIdFormats.canonical(userId);
 
         List<Message> history =
                 messageService.listRecentForConversation(conversationId, ragProperties.getMaxHistoryMessages());
 
-        messageService.saveUserMessage(conversationId, userCompact, userMessage);
+        messageService.saveUserMessage(conversationId, userKey, userMessage);
 
         RewriteResult rewrite = queryRewriteService.rewriteForRetrieval(userMessage, history);
 
@@ -122,7 +122,7 @@ public class RagStreamChatService {
             branch = intent.branch();
         }
 
-        String taskId = taskRegistry.registerTask(userCompact);
+        String taskId = taskRegistry.registerTask(userKey);
         SseEmitter emitter = new SseEmitter(SSE_TIMEOUT_MS);
         emitter.onCompletion(() -> taskRegistry.remove(taskId));
         emitter.onTimeout(() -> taskRegistry.remove(taskId));
@@ -139,7 +139,7 @@ public class RagStreamChatService {
                                     emitter,
                                     taskId,
                                     conversationId,
-                                    userCompact,
+                                    userKey,
                                     guidance != null ? guidance : "",
                                     ChatBranch.CLARIFICATION.name(),
                                     0));
@@ -173,8 +173,8 @@ public class RagStreamChatService {
                     && ragProperties.getEmptyHitsBehavior() == EmptyHitsBehavior.NO_LLM) {
                 llmStreamExecutor.execute(
                         () ->
-                                runEmptyHitsNoLlmStream(
-                                        emitter, taskId, conversationId, userCompact));
+                                        runEmptyHitsNoLlmStream(
+                                        emitter, taskId, conversationId, userKey));
                 return emitter;
             }
             systemText = buildSystemPromptWithToolAndKnowledge(toolContextText, hits);
@@ -201,7 +201,7 @@ public class RagStreamChatService {
                                 taskId,
                                 prepared,
                                 conversationId,
-                                userCompact,
+                                userKey,
                                 hitCount,
                                 branchName,
                                 toolUsedFinal,
@@ -216,7 +216,7 @@ public class RagStreamChatService {
             String taskId,
             LlmChatRequest prepared,
             String conversationId,
-            String userCompact,
+            String userKey,
             int hitCount,
             String branch,
             boolean toolUsed,
@@ -233,7 +233,7 @@ public class RagStreamChatService {
                     assistantBuffer,
                     () ->
                             messageService.saveAssistantMessage(
-                                    conversationId, userCompact, assistantBuffer.toString()));
+                                    conversationId, userKey, assistantBuffer.toString()));
         } catch (Exception e) {
             emitter.completeWithError(e);
         }
@@ -244,13 +244,13 @@ public class RagStreamChatService {
      * 与澄清分支同属「固定文案 + done」。
      */
     private void runEmptyHitsNoLlmStream(
-            SseEmitter emitter, String taskId, String conversationId, String userCompact) {
+            SseEmitter emitter, String taskId, String conversationId, String userKey) {
         String text = ragProperties.getEmptyHitsNoLlmMessage();
         runFixedAssistantStream(
                 emitter,
                 taskId,
                 conversationId,
-                userCompact,
+                userKey,
                 text != null ? text : "",
                 ChatBranch.RAG.name(),
                 0);
@@ -267,7 +267,7 @@ public class RagStreamChatService {
             SseEmitter emitter,
             String taskId,
             String conversationId,
-            String userCompact,
+            String userKey,
             String fullText,
             String branchName,
             int hitCount) {
@@ -280,7 +280,7 @@ public class RagStreamChatService {
             }
             sendEvent(emitter, Map.of("type", "chunk", "text", fullText));
             sendEvent(emitter, Map.of("type", "done"));
-            messageService.saveAssistantMessage(conversationId, userCompact, fullText);
+            messageService.saveAssistantMessage(conversationId, userKey, fullText);
             emitter.complete();
         } catch (Exception e) {
             emitter.completeWithError(e);

@@ -95,8 +95,8 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
      * 以 JWT 解析结果查库；{@code sub} 无对应行时尝试用 {@code uname}（清库重建后 ID 会变，签名仍有效）。
      */
     private VagentUserPrincipal resolvePrincipalAgainstDatabase(VagentUserPrincipal parsed) {
-        String compactId = UserIdFormats.compact(parsed.getUserId());
-        User user = userMapper.selectById(compactId);
+        String subjectKey = UserIdFormats.canonical(parsed.getUserId());
+        User user = userMapper.selectById(subjectKey);
         if (user == null
                 && jwtProperties.isRemapSubjectByUsernameWhenUserMissing()
                 && parsed.getUsername() != null) {

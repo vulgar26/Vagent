@@ -40,7 +40,7 @@ public class KnowledgeIngestService {
 
     @Transactional
     public IngestDocumentResponse ingest(UUID userId, String title, String content) {
-        String uid = UserIdFormats.compact(userId);
+        String uid = UserIdFormats.canonical(userId);
         User user = userMapper.selectById(uid);
         if (user == null) {
             throw new IllegalStateException("用户不存在: " + uid);

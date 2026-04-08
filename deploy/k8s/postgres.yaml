@@ -5,7 +5,7 @@ metadata:
   namespace: vagent-demo
 type: Opaque
 stringData:
-  username: vagent
+  username: postgres
   password: "change-me-db-password"
 ---
 apiVersion: v1
@@ -52,4 +52,4 @@ spec:
                   name: postgres-secret
                   key: password
             - name: POSTGRES_DB
-              value: vagent
+              value: ragent

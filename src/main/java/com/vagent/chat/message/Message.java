@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
+import com.vagent.mybatis.typehandler.UuidStringTypeHandler;
 
 import java.time.LocalDateTime;
 
@@ -21,7 +22,7 @@ import java.time.LocalDateTime;
  * <b>为什么同时存 user_id：</b>
  * 与项目里其它表一致，便于审计、按用户排查问题；检索历史时仍以 conversation_id 为主键过滤。
  */
-@TableName("messages")
+@TableName(value = "messages", autoResultMap = true)
 public class Message {
 
     /** 与 OpenAI Chat 中 user/assistant 字符串对齐，便于代码阅读与排查。 */
@@ -29,13 +30,13 @@ public class Message {
 
     public static final String ROLE_ASSISTANT = "ASSISTANT";
 
-    @TableId(type = IdType.ASSIGN_UUID)
+    @TableId(value = "id", type = IdType.ASSIGN_UUID, typeHandler = UuidStringTypeHandler.class)
     private String id;
 
-    @TableField("conversation_id")
+    @TableField(value = "conversation_id", typeHandler = UuidStringTypeHandler.class)
     private String conversationId;
 
-    @TableField("user_id")
+    @TableField(value = "user_id", typeHandler = UuidStringTypeHandler.class)
     private String userId;
 
     /**

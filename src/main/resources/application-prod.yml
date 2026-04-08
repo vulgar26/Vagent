@@ -1,0 +1,32 @@
+# 生产 profile：--spring.profiles.active=prod
+# 必须设置 VAGENT_SECURITY_JWT_SECRET（≥32 字符）；并配置 CORS 白名单与 DashScope Key 等。
+
+spring:
+  config:
+    activate:
+      on-profile: prod
+
+vagent:
+  security:
+    jwt:
+      secret: ${VAGENT_SECURITY_JWT_SECRET:}
+    cors:
+      allowed-origin-patterns:
+        - "https://CHANGE_ME.example.com"
+  llm:
+    provider: dashscope
+  embedding:
+    provider: dashscope
+  rag:
+    empty-hits-behavior: no-llm
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      show-details: never
+      probes:
+        enabled: true

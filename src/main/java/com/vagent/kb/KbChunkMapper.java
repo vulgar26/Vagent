@@ -22,7 +22,7 @@ public interface KbChunkMapper extends BaseMapper<KbChunk> {
                    c.content AS content,
                    (c.embedding <=> CAST(#{qv} AS vector(1024))) AS distance
             FROM kb_chunks c
-            WHERE c.user_id = #{userId}
+            WHERE c.user_id = CAST(#{userId} AS uuid)
             ORDER BY c.embedding <=> CAST(#{qv} AS vector(1024))
             LIMIT #{topK}
             """)

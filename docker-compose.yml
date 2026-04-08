@@ -1,18 +1,17 @@
-# 可选：本地 PostgreSQL + pgvector，与 application.yml 默认库名/用户一致。
+# 本地 PostgreSQL + pgvector，与 application.yml 默认库名/账号一致（ragent / postgres）。
 # 使用：docker compose up -d
-# 应用连接：jdbc:postgresql://localhost:5432/vagent（见 README）
 services:
   postgres:
     image: pgvector/pgvector:pg16
     container_name: vagent-postgres
     environment:
-      POSTGRES_USER: vagent
-      POSTGRES_PASSWORD: vagent
-      POSTGRES_DB: vagent
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: ragent
     ports:
       - "5432:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U vagent -d vagent"]
+      test: ["CMD-SHELL", "pg_isready -U postgres -d ragent"]
       interval: 5s
       timeout: 5s
       retries: 5

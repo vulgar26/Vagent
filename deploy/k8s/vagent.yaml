@@ -42,8 +42,10 @@ spec:
           ports:
             - containerPort: 8080
           env:
+            - name: SPRING_PROFILES_ACTIVE
+              value: prod
             - name: SPRING_DATASOURCE_URL
-              value: jdbc:postgresql://postgres:5432/vagent
+              value: jdbc:postgresql://postgres:5432/ragent
             - name: SPRING_DATASOURCE_USERNAME
               valueFrom:
                 secretKeyRef:

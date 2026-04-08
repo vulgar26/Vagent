@@ -34,7 +34,7 @@ public class ConversationService {
      */
     @Transactional(readOnly = true)
     public Optional<Conversation> findOwnedByUser(String conversationId, UUID userId) {
-        String uid = UserIdFormats.compact(userId);
+        String uid = UserIdFormats.canonical(userId);
         String cid = conversationId == null ? "" : conversationId.trim();
         if (cid.isEmpty()) {
             return Optional.empty();
@@ -48,7 +48,7 @@ public class ConversationService {
 
     @Transactional(readOnly = true)
     public List<ConversationResponse> listForUser(UUID userId) {
-        String uid = UserIdFormats.compact(userId);
+        String uid = UserIdFormats.canonical(userId);
         List<Conversation> rows = conversationMapper.selectList(
                 Wrappers.lambdaQuery(Conversation.class)
                         .eq(Conversation::getUserId, uid)
@@ -58,7 +58,7 @@ public class ConversationService {
 
     @Transactional
     public ConversationResponse create(UUID userId, CreateConversationRequest request) {
-        String uid = UserIdFormats.compact(userId);
+        String uid = UserIdFormats.canonical(userId);
         User user = userMapper.selectById(uid);
         if (user == null) {
             throw new IllegalStateException("用户不存在: " + uid);

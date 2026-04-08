@@ -40,7 +40,7 @@ public class KnowledgeRetrieveService {
     public List<RetrieveHit> search(UUID userId, String query, int topK) {
         Timer.Sample sample = Timer.start(meterRegistry);
         try {
-            String uid = UserIdFormats.compact(userId);
+            String uid = UserIdFormats.canonical(userId);
             float[] q = embeddingClient.embed(query);
             String qv = VectorFormats.toPgVectorLiteral(q);
             List<RetrieveHit> hits = kbChunkMapper.searchNearest(uid, qv, topK);
@@ -61,7 +61,7 @@ public class KnowledgeRetrieveService {
         Timer.Sample sample = Timer.start(meterRegistry);
         try {
             int topK = ragProps.getTopK();
-            String uid = UserIdFormats.compact(userId);
+            String uid = UserIdFormats.canonical(userId);
             float[] q = embeddingClient.embed(query);
             String qv = VectorFormats.toPgVectorLiteral(q);
             List<RetrieveHit> primary = kbChunkMapper.searchNearest(uid, qv, topK);

@@ -32,13 +32,14 @@ import java.util.List;
  */
 @Configuration
 @EnableWebSecurity
-@EnableConfigurationProperties(JwtProperties.class)
+@EnableConfigurationProperties({JwtProperties.class, CorsProperties.class})
 public class SecurityConfig {
 
     private final TraceIdMdcFilter traceIdMdcFilter;
     private final ObjectMapper objectMapper;
     private final JwtService jwtService;
     private final JwtProperties jwtProperties;
+    private final CorsProperties corsProperties;
     private final UserMapper userMapper;
 
     public SecurityConfig(
@@ -46,11 +47,13 @@ public class SecurityConfig {
             ObjectMapper objectMapper,
             JwtService jwtService,
             JwtProperties jwtProperties,
+            CorsProperties corsProperties,
             UserMapper userMapper) {
         this.traceIdMdcFilter = traceIdMdcFilter;
         this.objectMapper = objectMapper;
         this.jwtService = jwtService;
         this.jwtProperties = jwtProperties;
+        this.corsProperties = corsProperties;
         this.userMapper = userMapper;
     }
 
@@ -86,12 +89,21 @@ public class SecurityConfig {
     }
 
     /**
-     * 浏览器跨域调用 API 时预检 OPTIONS；此处为开发友好宽松配置，生产应收紧为具体前端域名。
+     * 浏览器跨域：来源模式来自 {@link CorsProperties}（生产见 {@code application-prod.yml}）。
      */
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration config = new CorsConfiguration();
-        config.setAllowedOriginPatterns(List.of("*"));
+        List<String> patterns = corsProperties.getAllowedOriginPatterns();
+        if (patterns == null || patterns.isEmpty()) {
+            config.addAllowedOriginPattern("*");
+        } else {
+            for (String p : patterns) {
+                if (p != null && !p.isBlank()) {
+                    config.addAllowedOriginPattern(p.trim());
+                }
+            }
+        }
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
         config.setAllowedHeaders(List.of("*"));
         config.setExposedHeaders(List.of("Authorization", TraceIdMdcFilter.RESPONSE_TRACE_HEADER));

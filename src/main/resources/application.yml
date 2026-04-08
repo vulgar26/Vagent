@@ -99,7 +99,12 @@ vagent:
     chunk-overlap: 64
   security:
     jwt:
-      secret: "0123456789abcdef0123456789abcdef"
+      # 生产务必用环境变量覆盖；此处默认仅本地开发（勿用于公网）
+      secret: ${VAGENT_SECURITY_JWT_SECRET:0123456789abcdef0123456789abcdef}
       expiration-seconds: 86400
       # 生产建议 false：sub 对应用户不存在时直接 401，要求重新登录（避免用户名被他人注册后旧 Token 误绑）
       remap-subject-by-username-when-user-missing: false
+    cors:
+      # 生产请改为具体域名（见 application-prod.yml）；* 仅开发便利
+      allowed-origin-patterns:
+        - "*"

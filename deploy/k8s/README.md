@@ -5,9 +5,10 @@
 ## 使用前必读
 
 1. 修改 **`postgres-secret`**、**`vagent-app-secret`** 中的占位密码与 **JWT 密钥**（至少 32 字符）。勿将真实密钥提交到公开仓库。  
-2. 在**仓库根目录**构建：`mvn -DskipTests package` 后执行 `docker build -t vagent:local .`。  
-3. **minikube / kind**：将 `vagent.yaml` 中 `imagePullPolicy` 改为 `Never`，并用 `minikube image load` 等方式把本机构建的 `vagent:local` 载入节点。  
-4. **云集群**：把 `vagent.yaml` 里的 `image` 换成你的镜像仓库地址，`imagePullPolicy` 用 `IfNotPresent` 或 `Always`。
+2. **生产 profile**（示例 Deployment 已设 `SPRING_PROFILES_ACTIVE=prod`）下须提供 **`DASHSCOPE_API_KEY`**（及按需 `MCP_TOKEN` 等），可通过额外 Secret + `env` 注入；并请将 **`application-prod.yml` 中 CORS** 的 `CHANGE_ME` 换成真实前端域名。  
+3. 在**仓库根目录**构建：`mvn -DskipTests package` 后执行 `docker build -t vagent:local .`。  
+4. **minikube / kind**：将 `vagent.yaml` 中 `imagePullPolicy` 改为 `Never`，并用 `minikube image load` 等方式把本机构建的 `vagent:local` 载入节点。  
+5. **云集群**：把 `vagent.yaml` 里的 `image` 换成你的镜像仓库地址，`imagePullPolicy` 用 `IfNotPresent` 或 `Always`。
 
 ## 应用
 

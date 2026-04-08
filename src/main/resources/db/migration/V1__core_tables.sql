@@ -1,5 +1,5 @@
 -- 核心业务表（PostgreSQL）；与 schema-core.sql 语义一致，由 Flyway 版本化管理。
--- 主键 VARCHAR(36)，与 MyBatis-Plus ASSIGN_UUID、JWT subject 一致。
+-- 初版为 VARCHAR；随后由 V3 升级为原生 uuid（Java 侧规范字符串 + TypeHandler）。
 
 CREATE TABLE users (
     id VARCHAR(36) NOT NULL PRIMARY KEY,

@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 import com.vagent.kb.mybatis.PgVectorFloatArrayTypeHandler;
+import com.vagent.mybatis.typehandler.UuidStringTypeHandler;
 
 /**
  * 文档分块及向量（度量：余弦距离 {@code <=>}，向量已 L2 归一化）。
@@ -12,13 +13,13 @@ import com.vagent.kb.mybatis.PgVectorFloatArrayTypeHandler;
 @TableName(value = "kb_chunks", autoResultMap = true)
 public class KbChunk {
 
-    @TableId(type = IdType.ASSIGN_UUID)
+    @TableId(value = "id", type = IdType.ASSIGN_UUID, typeHandler = UuidStringTypeHandler.class)
     private String id;
 
-    @TableField("document_id")
+    @TableField(value = "document_id", typeHandler = UuidStringTypeHandler.class)
     private String documentId;
 
-    @TableField("user_id")
+    @TableField(value = "user_id", typeHandler = UuidStringTypeHandler.class)
     private String userId;
 
     @TableField("chunk_index")
