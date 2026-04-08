@@ -40,6 +40,12 @@ mybatis-plus:
     map-underscore-to-camel-case: true
 
 vagent:
+  eval:
+    api:
+      # P0：评测接口安全边界（默认关闭；disabled 时 /api/v1/eval/** 返回 404）
+      enabled: false
+      # 逗号分隔：X-Eval-Token 的 SHA-256(hex)；勿存明文。示例：echo -n "token" | sha256sum
+      token-hash: ${VAGENT_EVAL_API_TOKEN_HASH:}
   # M5：检索前改写 + 规则意图（寒暄/澄清/RAG）；详见 docs/M5-实现说明.md
   orchestration:
     intent-enabled: true

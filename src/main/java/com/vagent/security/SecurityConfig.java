@@ -1,6 +1,7 @@
 package com.vagent.security;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.vagent.eval.EvalApiProperties;
 import com.vagent.observability.TraceIdMdcFilter;
 import com.vagent.user.UserMapper;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
@@ -32,7 +33,7 @@ import java.util.List;
  */
 @Configuration
 @EnableWebSecurity
-@EnableConfigurationProperties({JwtProperties.class, CorsProperties.class})
+@EnableConfigurationProperties({JwtProperties.class, CorsProperties.class, EvalApiProperties.class})
 public class SecurityConfig {
 
     private final TraceIdMdcFilter traceIdMdcFilter;
@@ -69,6 +70,8 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/actuator/**").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/v1/auth/register", "/api/v1/auth/login").permitAll()
+                        // eval 专用接口不走 JWT；由其自身的 X-Eval-Token + enabled 开关控制
+                        .requestMatchers("/api/v1/eval/**").permitAll()
                         .requestMatchers("/api/v1/**").authenticated()
                         .anyRequest().permitAll())
                 .exceptionHandling(e -> e.authenticationEntryPoint((request, response, ex) -> {
