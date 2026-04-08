@@ -25,6 +25,15 @@ public class JwtProperties {
      */
     private long expirationSeconds = 86_400;
 
+    /**
+     * 当 {@code sub} 对应用户行不存在时，是否允许用 JWT 中的 {@code uname} 再查库并绑定<strong>当前</strong>该用户名的账号。
+     * <p>
+     * <b>默认 {@code false}（推荐生产）：</b>清库、删用户、数据迁移后应要求客户端重新登录，避免「旧 Token + 用户名被他人抢先注册」等边界下误绑账号。
+     * <p>
+     * <b>{@code true}：</b>仅建议本地/演示开启，缓解清库后客户端仍带旧 Bearer 的联调成本。
+     */
+    private boolean remapSubjectByUsernameWhenUserMissing = false;
+
     public String getSecret() {
         return secret;
     }
@@ -39,5 +48,13 @@ public class JwtProperties {
 
     public void setExpirationSeconds(long expirationSeconds) {
         this.expirationSeconds = expirationSeconds;
+    }
+
+    public boolean isRemapSubjectByUsernameWhenUserMissing() {
+        return remapSubjectByUsernameWhenUserMissing;
+    }
+
+    public void setRemapSubjectByUsernameWhenUserMissing(boolean remapSubjectByUsernameWhenUserMissing) {
+        this.remapSubjectByUsernameWhenUserMissing = remapSubjectByUsernameWhenUserMissing;
     }
 }

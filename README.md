@@ -126,6 +126,7 @@ kubectl -n vagent-demo port-forward svc/vagent 8080:8080
 - JDK 17+
 - Maven 3.8+
 - **本地运行**：PostgreSQL 14+（或兼容版本），已创建库与用户（与 `application.yml` 一致）；**M2** 需能执行 `CREATE EXTENSION vector`（通常需超级用户先装扩展一次）
+- **JWT**：`vagent.security.jwt.remap-subject-by-username-when-user-missing` 默认为 **`false`**（`sub` 无对应用户即 401，需重新登录）；本地清库联调可在 `application-local.yml` 中设为 `true`，见 `application-local.example.yml`
 
 ### PostgreSQL 准备示例
 

@@ -29,8 +29,8 @@ import java.util.UUID;
  * <p>
  * <b>非法 Token：</b> 直接返回 401 JSON，避免把无效凭证当成匿名用户进入业务。
  * <p>
- * <b>清库后旧 Token：</b> 签名仍有效但 {@code sub} 对应用户已不存在时，若 JWT 含 {@code uname}，则按用户名回查当前库中的用户并刷新主体，
- * 避免客户端仍带旧 Bearer 时出现「用户不存在」与 SSE 404。
+ * <b>清库后旧 Token：</b>可选（见 {@link JwtProperties#isRemapSubjectByUsernameWhenUserMissing()}）：{@code sub} 无对应行时用 {@code uname} 回查；
+ * 生产默认关闭，要求重新登录更安全。
  */
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
@@ -38,10 +38,12 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     private final JwtService jwtService;
     private final UserMapper userMapper;
+    private final JwtProperties jwtProperties;
 
-    public JwtAuthenticationFilter(JwtService jwtService, UserMapper userMapper) {
+    public JwtAuthenticationFilter(JwtService jwtService, UserMapper userMapper, JwtProperties jwtProperties) {
         this.jwtService = jwtService;
         this.userMapper = userMapper;
+        this.jwtProperties = jwtProperties;
     }
 
     @Override
@@ -95,7 +97,9 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     private VagentUserPrincipal resolvePrincipalAgainstDatabase(VagentUserPrincipal parsed) {
         String compactId = UserIdFormats.compact(parsed.getUserId());
         User user = userMapper.selectById(compactId);
-        if (user == null && parsed.getUsername() != null) {
+        if (user == null
+                && jwtProperties.isRemapSubjectByUsernameWhenUserMissing()
+                && parsed.getUsername() != null) {
             String name = parsed.getUsername().trim();
             if (!name.isEmpty()) {
                 user = userMapper.selectOne(Wrappers.lambdaQuery(User.class).eq(User::getUsername, name));

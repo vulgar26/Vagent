@@ -38,23 +38,27 @@ public class SecurityConfig {
     private final TraceIdMdcFilter traceIdMdcFilter;
     private final ObjectMapper objectMapper;
     private final JwtService jwtService;
+    private final JwtProperties jwtProperties;
     private final UserMapper userMapper;
 
     public SecurityConfig(
             TraceIdMdcFilter traceIdMdcFilter,
             ObjectMapper objectMapper,
             JwtService jwtService,
+            JwtProperties jwtProperties,
             UserMapper userMapper) {
         this.traceIdMdcFilter = traceIdMdcFilter;
         this.objectMapper = objectMapper;
         this.jwtService = jwtService;
+        this.jwtProperties = jwtProperties;
         this.userMapper = userMapper;
     }
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         // 只在 Spring Security 过滤器链中使用，避免作为 Servlet Filter 自动注册导致 order 报错
-        JwtAuthenticationFilter jwtAuthenticationFilter = new JwtAuthenticationFilter(jwtService, userMapper);
+        JwtAuthenticationFilter jwtAuthenticationFilter =
+                new JwtAuthenticationFilter(jwtService, userMapper, jwtProperties);
         http
                 .csrf(AbstractHttpConfigurer::disable)
                 .cors(c -> c.configurationSource(corsConfigurationSource()))

@@ -101,3 +101,5 @@ vagent:
     jwt:
       secret: "0123456789abcdef0123456789abcdef"
       expiration-seconds: 86400
+      # 生产建议 false：sub 对应用户不存在时直接 401，要求重新登录（避免用户名被他人注册后旧 Token 误绑）
+      remap-subject-by-username-when-user-missing: false
