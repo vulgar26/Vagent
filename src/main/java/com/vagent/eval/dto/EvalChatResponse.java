@@ -3,6 +3,7 @@ package com.vagent.eval.dto;
 import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 import com.fasterxml.jackson.databind.annotation.JsonNaming;
 
+import java.util.List;
 import java.util.Map;
 
 @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
@@ -13,6 +14,7 @@ public class EvalChatResponse {
     private long latencyMs;
     private Capabilities capabilities;
     private Map<String, Object> meta;
+    private List<Source> sources;
 
     /**
      * P0 归因码（附录 D 枚举）。成功时可为 null。
@@ -27,12 +29,14 @@ public class EvalChatResponse {
             long latencyMs,
             Capabilities capabilities,
             Map<String, Object> meta,
+            List<Source> sources,
             String errorCode) {
         this.answer = answer;
         this.behavior = behavior;
         this.latencyMs = latencyMs;
         this.capabilities = capabilities;
         this.meta = meta;
+        this.sources = sources;
         this.errorCode = errorCode;
     }
 
@@ -76,12 +80,59 @@ public class EvalChatResponse {
         this.meta = meta;
     }
 
+    public List<Source> getSources() {
+        return sources;
+    }
+
+    public void setSources(List<Source> sources) {
+        this.sources = sources;
+    }
+
     public String getErrorCode() {
         return errorCode;
     }
 
     public void setErrorCode(String errorCode) {
         this.errorCode = errorCode;
+    }
+
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public static class Source {
+        private String id;
+        private String title;
+        private String snippet;
+
+        public Source() {}
+
+        public Source(String id, String title, String snippet) {
+            this.id = id;
+            this.title = title;
+            this.snippet = snippet;
+        }
+
+        public String getId() {
+            return id;
+        }
+
+        public void setId(String id) {
+            this.id = id;
+        }
+
+        public String getTitle() {
+            return title;
+        }
+
+        public void setTitle(String title) {
+            this.title = title;
+        }
+
+        public String getSnippet() {
+            return snippet;
+        }
+
+        public void setSnippet(String snippet) {
+            this.snippet = snippet;
+        }
     }
 
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
