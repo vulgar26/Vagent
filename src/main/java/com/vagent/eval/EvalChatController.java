@@ -3,37 +3,50 @@ package com.vagent.eval;
 import com.vagent.chat.rag.RagProperties;
 import com.vagent.eval.dto.EvalChatRequest;
 import com.vagent.eval.dto.EvalChatResponse;
+import com.vagent.kb.KnowledgeRetrieveService;
+import com.vagent.kb.dto.RetrieveHit;
 import jakarta.validation.Valid;
-import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 import static org.springframework.http.HttpStatus.NOT_FOUND;
 
 /**
  * P0：评测专用对话接口（非流式 + snake_case）。
  *
- * <p>Day1 骨架：仅完成请求/响应形态、读取 X-Eval-*、enabled + token-hash 校验。</p>
+ * <p>Day1：请求/响应形态、读取 X-Eval-*、enabled + token-hash 校验。</p>
+ * <p>Day2：sources[] 服务端生成、snippet 规则截断（≤300）。</p>
+ * <p>Day3：空命中/低置信门控（retrieve_hit_count、low_confidence、low_confidence_reasons、error_code）。</p>
  */
 @RestController
 @RequestMapping("/api/v1/eval")
 public class EvalChatController {
 
+    /** 与 vagent-upgrade P0 默认 minQueryChars 对齐：过短则低置信（相对特征）。 */
+    private static final int MIN_QUERY_CHARS = 3;
+
     private final EvalApiProperties evalApiProperties;
     private final RagProperties ragProperties;
+    private final KnowledgeRetrieveService knowledgeRetrieveService;
     private final EvalTokenVerifier tokenVerifier;
 
-    public EvalChatController(EvalApiProperties evalApiProperties, RagProperties ragProperties) {
+    public EvalChatController(
+            EvalApiProperties evalApiProperties,
+            RagProperties ragProperties,
+            KnowledgeRetrieveService knowledgeRetrieveService) {
         this.evalApiProperties = evalApiProperties;
         this.ragProperties = ragProperties;
+        this.knowledgeRetrieveService = knowledgeRetrieveService;
         this.tokenVerifier = new EvalTokenVerifier(evalApiProperties);
     }
 
@@ -70,29 +83,134 @@ public class EvalChatController {
                     latencyMs,
                     capabilitiesEffective(),
                     meta,
+                    List.of(),
                     "AUTH");
+        }
+
+        boolean retrievalSupported = ragProperties != null && ragProperties.isEnabled();
+        List<RetrieveHit> hits = List.of();
+        List<EvalChatResponse.Source> sources = List.of();
+
+        if (!retrievalSupported || knowledgeRetrieveService == null) {
+            meta.put("retrieve_hit_count", 0);
+            meta.put("low_confidence", false);
+            meta.put("low_confidence_reasons", List.of());
+            meta.put("disabled_reason", "RETRIEVAL_DISABLED");
+            long latencyMs = (System.nanoTime() - startNs) / 1_000_000L;
+            return new EvalChatResponse(
+                    "检索能力未启用。",
+                    "deny",
+                    latencyMs,
+                    capabilitiesEffective(),
+                    meta,
+                    sources,
+                    "POLICY_DISABLED");
+        }
+
+        UUID evalUserId = stableEvalUserId(xEvalTargetId);
+        hits = knowledgeRetrieveService.searchForRag(evalUserId, request.getQuery(), ragProperties);
+        sources = hitsToSources(hits);
+        int hitCount = hits.size();
+        meta.put("retrieve_hit_count", hitCount);
+
+        String q = request.getQuery() == null ? "" : request.getQuery().trim();
+
+        String answer = "OK";
+        String behavior = "answer";
+        String errorCode = null;
+
+        if (hitCount == 0) {
+            meta.put("low_confidence", true);
+            meta.put("low_confidence_reasons", List.of("EMPTY_HITS"));
+            answer = "知识库未检索到相关片段，请尝试补充关键词或更具体的问题描述。";
+            behavior = "clarify";
+            errorCode = "RETRIEVE_EMPTY";
+        } else if (q.length() < MIN_QUERY_CHARS) {
+            meta.put("low_confidence", true);
+            meta.put("low_confidence_reasons", List.of("QUERY_TOO_SHORT"));
+            answer = "你的问题描述过短，请补充更多上下文或关键词。";
+            behavior = "clarify";
+            errorCode = "RETRIEVE_LOW_CONFIDENCE";
+        } else {
+            meta.put("low_confidence", false);
+            meta.put("low_confidence_reasons", List.of());
         }
 
         long latencyMs = (System.nanoTime() - startNs) / 1_000_000L;
 
-        // Day1：骨架实现，不接入真实编排；Day2 起接 RAG/门控/sources/引用闭环
         return new EvalChatResponse(
-                "OK (skeleton): " + request.getQuery(),
-                "answer",
+                answer,
+                behavior,
                 latencyMs,
                 capabilitiesEffective(),
                 meta,
-                null);
+                sources,
+                errorCode);
     }
 
     private EvalChatResponse.Capabilities capabilitiesEffective() {
         boolean retrievalSupported = ragProperties != null && ragProperties.isEnabled();
         return new EvalChatResponse.Capabilities(
                 new EvalChatResponse.CapabilityFlag(retrievalSupported, false, null),
-                new EvalChatResponse.CapabilityFlag(false, null, true),
+                // supported=false 时，子能力字段不适用，置为 null
+                new EvalChatResponse.CapabilityFlag(false, null, null),
                 new EvalChatResponse.StreamingFlag(false),
                 new EvalChatResponse.GuardrailsFlag(false, false, false)
         );
+    }
+
+    private static UUID stableEvalUserId(String xEvalTargetId) {
+        String t = xEvalTargetId != null ? xEvalTargetId.trim() : "";
+        String seed = "eval-user|target=" + t;
+        return UUID.nameUUIDFromBytes(seed.getBytes(StandardCharsets.UTF_8));
+    }
+
+    private static List<EvalChatResponse.Source> hitsToSources(List<RetrieveHit> hits) {
+        if (hits == null || hits.isEmpty()) {
+            return List.of();
+        }
+        return hits.stream()
+                .map(h -> new EvalChatResponse.Source(
+                        canonicalHitId(h),
+                        canonicalTitle(h),
+                        truncateSnippet(h != null ? h.getContent() : null)))
+                .toList();
+    }
+
+    private static String canonicalHitId(RetrieveHit h) {
+        if (h == null) {
+            return "";
+        }
+        String cid = h.getChunkId() != null ? h.getChunkId().trim() : "";
+        if (!cid.isEmpty()) {
+            return cid;
+        }
+        String doc = h.getDocumentId() != null ? h.getDocumentId().trim() : "";
+        return !doc.isEmpty() ? doc : "";
+    }
+
+    private static String canonicalTitle(RetrieveHit h) {
+        // 当前 RetrieveHit 没有 title；Day2 用 document_id/source 做可读占位，Day3 再补齐真正 title
+        if (h == null) {
+            return "";
+        }
+        String doc = h.getDocumentId() != null ? h.getDocumentId().trim() : "";
+        if (!doc.isEmpty()) {
+            return doc;
+        }
+        String src = h.getSource() != null ? h.getSource().trim() : "";
+        return !src.isEmpty() ? src : "kb";
+    }
+
+    private static String truncateSnippet(String raw) {
+        if (raw == null) {
+            return "";
+        }
+        String s = raw.replaceAll("\\s+", " ").trim();
+        if (s.length() <= 300) {
+            return s;
+        }
+        return s.substring(0, 300);
     }
 }
 
