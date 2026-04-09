@@ -46,6 +46,8 @@ vagent:
       enabled: false
       # 逗号分隔：X-Eval-Token 的 SHA-256(hex)；勿存明文。示例：echo -n "token" | sha256sum
       token-hash: ${VAGENT_EVAL_API_TOKEN_HASH:}
+      # 仅当为 true 且 body mode=EVAL_DEBUG 时，meta 才允许出现明文 retrieval_hit_ids[]；生产务必 false
+      debug-enabled: ${VAGENT_EVAL_API_DEBUG_ENABLED:false}
   # M5：检索前改写 + 规则意图（寒暄/澄清/RAG）；详见 docs/M5-实现说明.md
   orchestration:
     intent-enabled: true

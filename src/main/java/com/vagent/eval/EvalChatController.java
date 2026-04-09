@@ -27,6 +27,7 @@ import static org.springframework.http.HttpStatus.NOT_FOUND;
  * <p>Day1：请求/响应形态、读取 X-Eval-*、enabled + token-hash 校验。</p>
  * <p>Day2：sources[] 服务端生成、snippet 规则截断（≤300）。</p>
  * <p>Day3：空命中/低置信门控（retrieve_hit_count、low_confidence、low_confidence_reasons、error_code）。</p>
+ * <p>Day4：EVAL_DEBUG + vagent.eval.api.debug-enabled 时可在 meta 输出明文 {@code retrieval_hit_ids[]}；否则绝不输出。</p>
  */
 @RestController
 @RequestMapping("/api/v1/eval")
@@ -112,6 +113,7 @@ public class EvalChatController {
         sources = hitsToSources(hits);
         int hitCount = hits.size();
         meta.put("retrieve_hit_count", hitCount);
+        meta.put("canonical_hit_id_scheme", "kb_chunk_id");
 
         String q = request.getQuery() == null ? "" : request.getQuery().trim();
 
@@ -136,6 +138,8 @@ public class EvalChatController {
             meta.put("low_confidence_reasons", List.of());
         }
 
+        maybeAttachDebugRetrievalHitIds(meta, mode, hits);
+
         long latencyMs = (System.nanoTime() - startNs) / 1_000_000L;
 
         return new EvalChatResponse(
@@ -146,6 +150,26 @@ public class EvalChatController {
                 meta,
                 sources,
                 errorCode);
+    }
+
+    /**
+     * 明文命中 id 仅允许在「服务端打开 debug-enabled」且「请求 mode=EVAL_DEBUG」时写入 meta；
+     * 其他情况不向 meta 放入 {@code retrieval_hit_ids} 键，避免 eval 判 {@code SECURITY_BOUNDARY_VIOLATION}。
+     */
+    private void maybeAttachDebugRetrievalHitIds(Map<String, Object> meta, String mode, List<RetrieveHit> hits) {
+        if (!evalApiProperties.isDebugEnabled() || !"EVAL_DEBUG".equals(mode)) {
+            return;
+        }
+        if (hits == null || hits.isEmpty()) {
+            meta.put("retrieval_hit_ids", List.of());
+            return;
+        }
+        List<String> ids =
+                hits.stream()
+                        .map(EvalChatController::canonicalHitId)
+                        .filter(id -> id != null && !id.isBlank())
+                        .toList();
+        meta.put("retrieval_hit_ids", ids);
     }
 
     private EvalChatResponse.Capabilities capabilitiesEffective() {
