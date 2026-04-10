@@ -14,10 +14,14 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.nio.charset.StandardCharsets;
+import java.security.GeneralSecurityException;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+
+import javax.crypto.Mac;
+import javax.crypto.spec.SecretKeySpec;
 
 import static org.springframework.http.HttpStatus.NOT_FOUND;
 
@@ -38,6 +42,9 @@ public class EvalChatController {
 
     /** 与 vagent-upgrade P0 默认 minQueryChars 对齐：过短则低置信（相对特征）。 */
     private static final int MIN_QUERY_CHARS = 3;
+
+    /** Day5：hashed membership 候选集上限（强制 N≤50）。 */
+    private static final int RETRIEVAL_CANDIDATE_LIMIT_N = 50;
 
     private final EvalApiProperties evalApiProperties;
     private final RagProperties ragProperties;
@@ -113,10 +120,21 @@ public class EvalChatController {
 
         UUID evalUserId = stableEvalUserId(xEvalTargetId);
         hits = knowledgeRetrieveService.searchForRag(evalUserId, request.getQuery(), ragProperties);
-        sources = hitsToSources(hits);
-        int hitCount = hits.size();
+        int candidateTotal = hits.size();
+        int limitN = Math.min(RETRIEVAL_CANDIDATE_LIMIT_N, candidateTotal);
+        List<RetrieveHit> candidates = hits.subList(0, limitN);
+        sources = hitsToSources(candidates);
+        int hitCount = candidateTotal;
         meta.put("retrieve_hit_count", hitCount);
         meta.put("canonical_hit_id_scheme", "kb_chunk_id");
+        meta.put("retrieval_candidate_limit_n", limitN);
+        meta.put("retrieval_candidate_total", candidateTotal);
+
+        // Day5：非 debug 也能验证引用闭环：对候选集前 N 生成 hashed membership（HMAC 列表）
+        // key 派生材料来自 X-Eval-Token + (targetId,datasetId,caseId)，与 eval 侧对齐
+        meta.put(
+                "retrieval_hit_id_hashes",
+                buildRetrievalHitIdHashes(xEvalToken, xEvalTargetId, xEvalDatasetId, xEvalCaseId, candidates));
 
         String q = request.getQuery() == null ? "" : request.getQuery().trim();
 
@@ -141,7 +159,8 @@ public class EvalChatController {
             meta.put("low_confidence_reasons", List.of());
         }
 
-        maybeAttachDebugRetrievalHitIds(meta, mode, hits);
+        // Day4：debug 模式可返回明文 hit ids（同 Day5 “候选集前 N” 口径）
+        maybeAttachDebugRetrievalHitIds(meta, mode, candidates);
 
         long latencyMs = (System.nanoTime() - startNs) / 1_000_000L;
 
@@ -173,6 +192,57 @@ public class EvalChatController {
                         .filter(id -> id != null && !id.isBlank())
                         .toList();
         meta.put("retrieval_hit_ids", ids);
+    }
+
+    private static List<String> buildRetrievalHitIdHashes(
+            String xEvalToken,
+            String xEvalTargetId,
+            String xEvalDatasetId,
+            String xEvalCaseId,
+            List<RetrieveHit> candidates) {
+        if (candidates == null || candidates.isEmpty()) {
+            return List.of();
+        }
+        String token = xEvalToken != null ? xEvalToken.trim() : "";
+        if (token.isEmpty()) {
+            return List.of();
+        }
+        String targetId = xEvalTargetId != null ? xEvalTargetId.trim() : "";
+        String datasetId = xEvalDatasetId != null ? xEvalDatasetId.trim() : "";
+        String caseId = xEvalCaseId != null ? xEvalCaseId.trim() : "";
+
+        byte[] kCase = hmacSha256(token.getBytes(StandardCharsets.UTF_8),
+                ("hitid-key/v1|" + targetId + "|" + datasetId + "|" + caseId).getBytes(StandardCharsets.UTF_8));
+
+        return candidates.stream()
+                .map(EvalChatController::canonicalHitId)
+                .filter(id -> id != null && !id.isBlank())
+                .map(id -> toHexLower(hmacSha256(kCase, id.getBytes(StandardCharsets.UTF_8))))
+                .toList();
+    }
+
+    private static byte[] hmacSha256(byte[] key, byte[] msg) {
+        try {
+            Mac mac = Mac.getInstance("HmacSHA256");
+            mac.init(new SecretKeySpec(key, "HmacSHA256"));
+            return mac.doFinal(msg);
+        } catch (GeneralSecurityException e) {
+            throw new IllegalStateException("HmacSHA256 not available", e);
+        }
+    }
+
+    private static String toHexLower(byte[] bytes) {
+        if (bytes == null || bytes.length == 0) {
+            return "";
+        }
+        char[] hex = new char[bytes.length * 2];
+        final char[] alphabet = "0123456789abcdef".toCharArray();
+        for (int i = 0; i < bytes.length; i++) {
+            int v = bytes[i] & 0xFF;
+            hex[i * 2] = alphabet[v >>> 4];
+            hex[i * 2 + 1] = alphabet[v & 0x0F];
+        }
+        return new String(hex);
     }
 
     private EvalChatResponse.Capabilities capabilitiesEffective() {
