@@ -1,5 +1,7 @@
 package com.vagent.eval;
 
+import org.springframework.boot.context.properties.ConfigurationProperties;
+
 /**
  * 评测接口安全边界（SSOT）：是否启用 + token 哈希。
  *
@@ -9,10 +11,8 @@ package com.vagent.eval;
  *
  * <p>debugEnabled：仅当为 true 且请求 {@code mode=EVAL_DEBUG} 时，响应 {@code meta} 才允许出现明文
  * {@code retrieval_hit_ids[]}；生产默认 false，避免误开侧信道。</p>
- *
- * <p>实际 Spring 绑定由子类 {@link com.vagent.eval.security.EvalApiProperties} 完成，避免与
- * {@code eval.security} 包内筛选器注入类型不一致。</p>
  */
+@ConfigurationProperties(prefix = "vagent.eval.api")
 public class EvalApiProperties {
 
     /**

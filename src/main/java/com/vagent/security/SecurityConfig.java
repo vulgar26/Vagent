@@ -1,7 +1,7 @@
 package com.vagent.security;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.vagent.eval.security.EvalApiProperties;
+import com.vagent.eval.EvalApiProperties;
 import com.vagent.observability.TraceIdMdcFilter;
 import com.vagent.user.UserMapper;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
