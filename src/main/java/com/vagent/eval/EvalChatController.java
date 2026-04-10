@@ -29,7 +29,10 @@ import static org.springframework.http.HttpStatus.NOT_FOUND;
  * <p>Day3：空命中/低置信门控（retrieve_hit_count、low_confidence、low_confidence_reasons、error_code）。</p>
  * <p>Day4：EVAL_DEBUG + vagent.eval.api.debug-enabled 时可在 meta 输出明文 {@code retrieval_hit_ids[]}；否则绝不输出。</p>
  */
-@RestController
+/**
+ * Bean 名显式指定，避免与包内其他 {@code EvalChatController}（若存在）默认名 {@code evalChatController} 冲突。
+ */
+@RestController("vagentEvalChatController")
 @RequestMapping("/api/v1/eval")
 public class EvalChatController {
 
