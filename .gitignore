@@ -41,3 +41,6 @@ replay_pid*.log
 
 ### Local overrides (secrets / MCP / LLM) ###
 src/main/resources/application-local.yml
+
+### Eval export artifacts (regenerate via export-eval-run-failures.ps1) ###
+plans/datasets/run_failures.csv

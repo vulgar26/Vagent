@@ -13,7 +13,8 @@ import com.vagent.mybatis.typehandler.UuidStringTypeHandler;
 @TableName(value = "kb_chunks", autoResultMap = true)
 public class KbChunk {
 
-    @TableId(value = "id", type = IdType.ASSIGN_UUID, typeHandler = UuidStringTypeHandler.class)
+    @TableId(value = "id", type = IdType.ASSIGN_UUID)
+    @TableField(value = "id", typeHandler = UuidStringTypeHandler.class)
     private String id;
 
     @TableField(value = "document_id", typeHandler = UuidStringTypeHandler.class)

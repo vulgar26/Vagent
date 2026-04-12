@@ -5,6 +5,7 @@ import com.vagent.eval.dto.EvalChatRequest;
 import com.vagent.eval.dto.EvalChatResponse;
 import com.vagent.kb.KnowledgeRetrieveService;
 import com.vagent.kb.dto.RetrieveHit;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -18,7 +19,11 @@ import java.security.GeneralSecurityException;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
+
+import com.vagent.guardrails.GuardrailsProperties;
 
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
@@ -32,6 +37,9 @@ import static org.springframework.http.HttpStatus.NOT_FOUND;
  * <p>Day2：sources[] 服务端生成、snippet 规则截断（≤300）。</p>
  * <p>Day3：空命中/低置信门控（retrieve_hit_count、low_confidence、low_confidence_reasons、error_code）。</p>
  * <p>Day4：EVAL_DEBUG + vagent.eval.api.debug-enabled 时可在 meta 输出明文 {@code retrieval_hit_ids[]}；否则绝不输出。</p>
+ * <p>Day6：可选 {@code vagent.eval.api.allow-cidrs} 限制明文 debug 的客户端网段；返回前再次剔除越界 {@code retrieval_hit_ids}。</p>
+ * <p>Day7：{@code vagent.guardrails.reflection.enabled} 时一次性门控：{@code meta.guardrail_triggered}、{@code reflection_outcome}、
+ * {@code reflection_reasons[]} 与可归因 {@code error_code}（如 {@code SOURCE_NOT_IN_HITS}、{@code GUARDRAIL_TRIGGERED}）。</p>
  */
 /**
  * Bean 名显式指定，避免与包内其他 {@code EvalChatController}（若存在）默认名 {@code evalChatController} 冲突。
@@ -47,15 +55,21 @@ public class EvalChatController {
     private static final int RETRIEVAL_CANDIDATE_LIMIT_N = 50;
 
     private final EvalApiProperties evalApiProperties;
+    private final EvalDebugNetworkPolicy debugNetworkPolicy;
+    private final GuardrailsProperties guardrailsProperties;
     private final RagProperties ragProperties;
     private final KnowledgeRetrieveService knowledgeRetrieveService;
     private final EvalTokenVerifier tokenVerifier;
 
     public EvalChatController(
             EvalApiProperties evalApiProperties,
+            EvalDebugNetworkPolicy debugNetworkPolicy,
+            GuardrailsProperties guardrailsProperties,
             RagProperties ragProperties,
             KnowledgeRetrieveService knowledgeRetrieveService) {
         this.evalApiProperties = evalApiProperties;
+        this.debugNetworkPolicy = debugNetworkPolicy;
+        this.guardrailsProperties = guardrailsProperties;
         this.ragProperties = ragProperties;
         this.knowledgeRetrieveService = knowledgeRetrieveService;
         this.tokenVerifier = new EvalTokenVerifier(evalApiProperties);
@@ -63,6 +77,7 @@ public class EvalChatController {
 
     @PostMapping("/chat")
     public EvalChatResponse chat(
+            HttpServletRequest httpRequest,
             @RequestHeader(value = "X-Eval-Token", required = false) String xEvalToken,
             @RequestHeader(value = "X-Eval-Run-Id", required = false) String xEvalRunId,
             @RequestHeader(value = "X-Eval-Dataset-Id", required = false) String xEvalDatasetId,
@@ -87,6 +102,7 @@ public class EvalChatController {
         if (xEvalTargetId != null && !xEvalTargetId.isBlank()) meta.put("x_eval_target_id", xEvalTargetId.trim());
 
         if (!tokenVerifier.verifyOrFalse(xEvalToken)) {
+            enforceRetrievalHitIdBoundary(meta, mode, httpRequest);
             long latencyMs = (System.nanoTime() - startNs) / 1_000_000L;
             return new EvalChatResponse(
                     "",
@@ -107,6 +123,7 @@ public class EvalChatController {
             meta.put("low_confidence", false);
             meta.put("low_confidence_reasons", List.of());
             meta.put("disabled_reason", "RETRIEVAL_DISABLED");
+            enforceRetrievalHitIdBoundary(meta, mode, httpRequest);
             long latencyMs = (System.nanoTime() - startNs) / 1_000_000L;
             return new EvalChatResponse(
                     "检索能力未启用。",
@@ -141,26 +158,55 @@ public class EvalChatController {
         String answer = "OK";
         String behavior = "answer";
         String errorCode = null;
+        boolean lowConfidence;
 
         if (hitCount == 0) {
+            lowConfidence = true;
             meta.put("low_confidence", true);
             meta.put("low_confidence_reasons", List.of("EMPTY_HITS"));
             answer = "知识库未检索到相关片段，请尝试补充关键词或更具体的问题描述。";
             behavior = "clarify";
             errorCode = "RETRIEVE_EMPTY";
         } else if (q.length() < MIN_QUERY_CHARS) {
+            lowConfidence = true;
             meta.put("low_confidence", true);
             meta.put("low_confidence_reasons", List.of("QUERY_TOO_SHORT"));
             answer = "你的问题描述过短，请补充更多上下文或关键词。";
             behavior = "clarify";
             errorCode = "RETRIEVE_LOW_CONFIDENCE";
         } else {
+            lowConfidence = false;
             meta.put("low_confidence", false);
             meta.put("low_confidence_reasons", List.of());
         }
 
-        // Day4：debug 模式可返回明文 hit ids（同 Day5 “候选集前 N” 口径）
-        maybeAttachDebugRetrievalHitIds(meta, mode, candidates);
+        if (guardrailsProperties.getReflection().isEnabled()) {
+            meta.put("guardrail_triggered", false);
+            Set<String> allowedHitIds = allowedHitIdsFromCandidates(candidates);
+            var patchOpt =
+                    EvalReflectionOneShotGuard.evaluate(
+                            true,
+                            guardrailsProperties.getReflection().getMaxAnswerCharsWhenLowConfidence(),
+                            request.getRequiresCitations(),
+                            hitCount,
+                            allowedHitIds,
+                            sources,
+                            lowConfidence,
+                            answer);
+            if (patchOpt.isPresent()) {
+                EvalReflectionOneShotGuard.Patch p = patchOpt.get();
+                answer = p.answer();
+                behavior = p.behavior();
+                errorCode = p.errorCode();
+                meta.put("guardrail_triggered", true);
+                meta.put("reflection_outcome", p.reflectionOutcome());
+                meta.put("reflection_reasons", p.reflectionReasons());
+            }
+        }
+
+        // Day4：debug 模式可返回明文 hit ids（同 Day5 “候选集前 N” 口径）；Day6：受 allow-cidrs 约束
+        maybeAttachDebugRetrievalHitIds(meta, mode, httpRequest, candidates);
+        enforceRetrievalHitIdBoundary(meta, mode, httpRequest);
 
         long latencyMs = (System.nanoTime() - startNs) / 1_000_000L;
 
@@ -175,11 +221,15 @@ public class EvalChatController {
     }
 
     /**
-     * 明文命中 id 仅允许在「服务端打开 debug-enabled」且「请求 mode=EVAL_DEBUG」时写入 meta；
+     * 明文命中 id 仅允许在「服务端打开 debug-enabled」「请求 mode=EVAL_DEBUG」「allow-cidrs 为空或客户端 IP 命中」时写入 meta；
      * 其他情况不向 meta 放入 {@code retrieval_hit_ids} 键，避免 eval 判 {@code SECURITY_BOUNDARY_VIOLATION}。
      */
-    private void maybeAttachDebugRetrievalHitIds(Map<String, Object> meta, String mode, List<RetrieveHit> hits) {
+    private void maybeAttachDebugRetrievalHitIds(
+            Map<String, Object> meta, String mode, HttpServletRequest httpRequest, List<RetrieveHit> hits) {
         if (!evalApiProperties.isDebugEnabled() || !"EVAL_DEBUG".equals(mode)) {
+            return;
+        }
+        if (!debugNetworkPolicy.allowsPlaintextRetrievalHitIds(httpRequest)) {
             return;
         }
         if (hits == null || hits.isEmpty()) {
@@ -192,6 +242,15 @@ public class EvalChatController {
                         .filter(id -> id != null && !id.isBlank())
                         .toList();
         meta.put("retrieval_hit_ids", ids);
+    }
+
+    /** 防止未来分支误写：只要不满足完整 debug 条件，强制移除明文命中 id 键。 */
+    private void enforceRetrievalHitIdBoundary(Map<String, Object> meta, String mode, HttpServletRequest httpRequest) {
+        if (!evalApiProperties.isDebugEnabled()
+                || !"EVAL_DEBUG".equals(mode)
+                || !debugNetworkPolicy.allowsPlaintextRetrievalHitIds(httpRequest)) {
+            meta.remove("retrieval_hit_ids");
+        }
     }
 
     private static List<String> buildRetrievalHitIdHashes(
@@ -247,13 +306,25 @@ public class EvalChatController {
 
     private EvalChatResponse.Capabilities capabilitiesEffective() {
         boolean retrievalSupported = ragProperties != null && ragProperties.isEnabled();
+        boolean reflectionOn =
+                guardrailsProperties != null && guardrailsProperties.getReflection().isEnabled();
         return new EvalChatResponse.Capabilities(
                 new EvalChatResponse.CapabilityFlag(retrievalSupported, false, null),
                 // supported=false 时，子能力字段不适用，置为 null
                 new EvalChatResponse.CapabilityFlag(false, null, null),
                 new EvalChatResponse.StreamingFlag(false),
-                new EvalChatResponse.GuardrailsFlag(false, false, false)
+                new EvalChatResponse.GuardrailsFlag(false, false, reflectionOn)
         );
+    }
+
+    private static Set<String> allowedHitIdsFromCandidates(List<RetrieveHit> candidates) {
+        if (candidates == null || candidates.isEmpty()) {
+            return Set.of();
+        }
+        return candidates.stream()
+                .map(EvalChatController::canonicalHitId)
+                .filter(id -> id != null && !id.isBlank())
+                .collect(Collectors.toUnmodifiableSet());
     }
 
     private static UUID stableEvalUserId(String xEvalTargetId) {

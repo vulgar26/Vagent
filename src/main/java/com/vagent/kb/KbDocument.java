@@ -14,7 +14,8 @@ import java.time.LocalDateTime;
 @TableName(value = "kb_documents", autoResultMap = true)
 public class KbDocument {
 
-    @TableId(value = "id", type = IdType.ASSIGN_UUID, typeHandler = UuidStringTypeHandler.class)
+    @TableId(value = "id", type = IdType.ASSIGN_UUID)
+    @TableField(value = "id", typeHandler = UuidStringTypeHandler.class)
     private String id;
 
     @TableField(value = "user_id", typeHandler = UuidStringTypeHandler.class)

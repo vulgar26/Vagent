@@ -2,6 +2,7 @@ package com.vagent.security;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.vagent.eval.EvalApiProperties;
+import com.vagent.guardrails.GuardrailsProperties;
 import com.vagent.observability.TraceIdMdcFilter;
 import com.vagent.user.UserMapper;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
@@ -33,7 +34,7 @@ import java.util.List;
  */
 @Configuration
 @EnableWebSecurity
-@EnableConfigurationProperties({JwtProperties.class, CorsProperties.class, EvalApiProperties.class})
+@EnableConfigurationProperties({JwtProperties.class, CorsProperties.class, EvalApiProperties.class, GuardrailsProperties.class})
 public class SecurityConfig {
 
     private final TraceIdMdcFilter traceIdMdcFilter;

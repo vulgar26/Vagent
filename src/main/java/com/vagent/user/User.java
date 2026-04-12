@@ -18,7 +18,8 @@ import java.time.LocalDateTime;
 @TableName(value = "users", autoResultMap = true)
 public class User {
 
-    @TableId(value = "id", type = IdType.ASSIGN_UUID, typeHandler = UuidStringTypeHandler.class)
+    @TableId(value = "id", type = IdType.ASSIGN_UUID)
+    @TableField(value = "id", typeHandler = UuidStringTypeHandler.class)
     private String id;
 
     private String username;

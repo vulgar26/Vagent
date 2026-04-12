@@ -14,6 +14,11 @@ public class EvalChatRequest {
 
     private String conversationId;
 
+    /**
+     * 与 eval dataset 对齐：为 true 时要求 {@code sources[].id} 均属本次检索候选集（前 N）。
+     */
+    private Boolean requiresCitations;
+
     public String getQuery() {
         return query;
     }
@@ -36,6 +41,14 @@ public class EvalChatRequest {
 
     public void setConversationId(String conversationId) {
         this.conversationId = conversationId;
+    }
+
+    public Boolean getRequiresCitations() {
+        return requiresCitations;
+    }
+
+    public void setRequiresCitations(Boolean requiresCitations) {
+        this.requiresCitations = requiresCitations;
     }
 }
 

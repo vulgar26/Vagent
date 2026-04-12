@@ -30,7 +30,8 @@ public class Message {
 
     public static final String ROLE_ASSISTANT = "ASSISTANT";
 
-    @TableId(value = "id", type = IdType.ASSIGN_UUID, typeHandler = UuidStringTypeHandler.class)
+    @TableId(value = "id", type = IdType.ASSIGN_UUID)
+    @TableField(value = "id", typeHandler = UuidStringTypeHandler.class)
     private String id;
 
     @TableField(value = "conversation_id", typeHandler = UuidStringTypeHandler.class)

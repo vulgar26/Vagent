@@ -40,6 +40,11 @@ mybatis-plus:
     map-underscore-to-camel-case: true
 
 vagent:
+  guardrails:
+    reflection:
+      # Day7：一次性门控（引用闭环 / 低置信长度）；默认关闭以保持与旧 eval 基线一致
+      enabled: ${VAGENT_GUARDRAILS_REFLECTION_ENABLED:false}
+      max-answer-chars-when-low-confidence: 500
   eval:
     api:
       # P0：评测接口安全边界（默认关闭；disabled 时 /api/v1/eval/** 返回 404）
@@ -48,6 +53,11 @@ vagent:
       token-hash: ${VAGENT_EVAL_API_TOKEN_HASH:}
       # 仅当为 true 且 body mode=EVAL_DEBUG 时，meta 才允许出现明文 retrieval_hit_ids[]；生产务必 false
       debug-enabled: ${VAGENT_EVAL_API_DEBUG_ENABLED:false}
+      # 非空时：仅当客户端 IP 落入下列某一 CIDR 时才输出明文 retrieval_hit_ids[]（与 debug-enabled、EVAL_DEBUG、token 同时满足）
+      # 例：allow-cidrs: [ "127.0.0.1/32", "::1/128", "10.0.0.0/8" ]；留空或不写则不按 IP 限制
+      allow-cidrs: []
+      # 仅在反向代理可信地写入 X-Forwarded-For 时开启；直连场景勿开，避免客户端伪造 IP 绕过 allowlist
+      trust-forwarded-headers: ${VAGENT_EVAL_API_TRUST_FORWARDED_HEADERS:false}
   # M5：检索前改写 + 规则意图（寒暄/澄清/RAG）；详见 docs/M5-实现说明.md
   orchestration:
     intent-enabled: true

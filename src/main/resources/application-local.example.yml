@@ -1,5 +1,20 @@
 # 复制为 application-local.yml 后按需修改（application-local.yml 已加入 .gitignore，勿提交密钥）。
 # 启动：--spring.profiles.active=local 或在 IDE Active profiles 填 local
+#
+# 评测接口（可选）：启用后需配置 token-hash；EVAL_DEBUG 明文 hit id 可再加 allow-cidrs 锁网段
+# vagent:
+#   eval:
+#     api:
+#       enabled: true
+#       token-hash: ${VAGENT_EVAL_API_TOKEN_HASH:}
+#       debug-enabled: true
+#       allow-cidrs: [ "127.0.0.1/32", "::1/128" ]
+#       trust-forwarded-headers: false
+#   guardrails:
+#     reflection:
+#       enabled: true
+#       # 调小可在低置信分支复现 GUARDRAIL_TRIGGERED（仅本地演示）
+#       max-answer-chars-when-low-confidence: 500
 vagent:
   security:
     jwt:
