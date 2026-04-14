@@ -4,41 +4,40 @@ import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
-import com.vagent.mybatis.typehandler.UuidStringTypeHandler;
 
 import java.time.LocalDateTime;
+import java.util.UUID;
 
 /**
- * 知识库文档（一篇用户可见的标题 + 若干分块）。
+ * 知识库文档（一篇用户可见的标题 + 若干分块）。主键与外键列为 PostgreSQL {@code uuid}，Java 使用 {@link UUID}。
  */
 @TableName(value = "kb_documents", autoResultMap = true)
 public class KbDocument {
 
-    @TableId(value = "id", type = IdType.ASSIGN_UUID)
-    @TableField(value = "id", typeHandler = UuidStringTypeHandler.class)
-    private String id;
+    @TableId(value = "id", type = IdType.INPUT)
+    private UUID id;
 
-    @TableField(value = "user_id", typeHandler = UuidStringTypeHandler.class)
-    private String userId;
+    @TableField("user_id")
+    private UUID userId;
 
     private String title;
 
     @TableField("created_at")
     private LocalDateTime createdAt;
 
-    public String getId() {
+    public UUID getId() {
         return id;
     }
 
-    public void setId(String id) {
+    public void setId(UUID id) {
         this.id = id;
     }
 
-    public String getUserId() {
+    public UUID getUserId() {
         return userId;
     }
 
-    public void setUserId(String userId) {
+    public void setUserId(UUID userId) {
         this.userId = userId;
     }
 

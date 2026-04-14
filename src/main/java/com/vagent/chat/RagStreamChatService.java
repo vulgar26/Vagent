@@ -111,7 +111,7 @@ public class RagStreamChatService {
         List<Message> history =
                 messageService.listRecentForConversation(conversationId, ragProperties.getMaxHistoryMessages());
 
-        messageService.saveUserMessage(conversationId, userKey, userMessage);
+        messageService.saveUserMessage(conversationId, userId, userMessage);
 
         RewriteResult rewrite = queryRewriteService.rewriteForRetrieval(userMessage, history);
 
@@ -139,7 +139,7 @@ public class RagStreamChatService {
                                     emitter,
                                     taskId,
                                     conversationId,
-                                    userKey,
+                                    userId,
                                     guidance != null ? guidance : "",
                                     ChatBranch.CLARIFICATION.name(),
                                     0));
@@ -174,7 +174,7 @@ public class RagStreamChatService {
                 llmStreamExecutor.execute(
                         () ->
                                         runEmptyHitsNoLlmStream(
-                                        emitter, taskId, conversationId, userKey));
+                                        emitter, taskId, conversationId, userId));
                 return emitter;
             }
             systemText = buildSystemPromptWithToolAndKnowledge(toolContextText, hits);
@@ -201,7 +201,7 @@ public class RagStreamChatService {
                                 taskId,
                                 prepared,
                                 conversationId,
-                                userKey,
+                                userId,
                                 hitCount,
                                 branchName,
                                 toolUsedFinal,
@@ -216,7 +216,7 @@ public class RagStreamChatService {
             String taskId,
             LlmChatRequest prepared,
             String conversationId,
-            String userKey,
+            UUID userId,
             int hitCount,
             String branch,
             boolean toolUsed,
@@ -233,7 +233,7 @@ public class RagStreamChatService {
                     assistantBuffer,
                     () ->
                             messageService.saveAssistantMessage(
-                                    conversationId, userKey, assistantBuffer.toString()));
+                                    conversationId, userId, assistantBuffer.toString()));
         } catch (Exception e) {
             emitter.completeWithError(e);
         }
@@ -244,13 +244,13 @@ public class RagStreamChatService {
      * 与澄清分支同属「固定文案 + done」。
      */
     private void runEmptyHitsNoLlmStream(
-            SseEmitter emitter, String taskId, String conversationId, String userKey) {
+            SseEmitter emitter, String taskId, String conversationId, UUID userId) {
         String text = ragProperties.getEmptyHitsNoLlmMessage();
         runFixedAssistantStream(
                 emitter,
                 taskId,
                 conversationId,
-                userKey,
+                userId,
                 text != null ? text : "",
                 ChatBranch.RAG.name(),
                 0);
@@ -267,7 +267,7 @@ public class RagStreamChatService {
             SseEmitter emitter,
             String taskId,
             String conversationId,
-            String userKey,
+            UUID userId,
             String fullText,
             String branchName,
             int hitCount) {
@@ -280,7 +280,7 @@ public class RagStreamChatService {
             }
             sendEvent(emitter, Map.of("type", "chunk", "text", fullText));
             sendEvent(emitter, Map.of("type", "done"));
-            messageService.saveAssistantMessage(conversationId, userKey, fullText);
+            messageService.saveAssistantMessage(conversationId, userId, fullText);
             emitter.complete();
         } catch (Exception e) {
             emitter.completeWithError(e);

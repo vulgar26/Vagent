@@ -16,9 +16,11 @@ import org.springframework.web.server.ResponseStatusException;
 
 import java.nio.charset.StandardCharsets;
 import java.security.GeneralSecurityException;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -40,6 +42,12 @@ import static org.springframework.http.HttpStatus.NOT_FOUND;
  * <p>Day6：可选 {@code vagent.eval.api.allow-cidrs} 限制明文 debug 的客户端网段；返回前再次剔除越界 {@code retrieval_hit_ids}。</p>
  * <p>Day7：{@code vagent.guardrails.reflection.enabled} 时一次性门控：{@code meta.guardrail_triggered}、{@code reflection_outcome}、
  * {@code reflection_reasons[]} 与可归因 {@code error_code}（如 {@code SOURCE_NOT_IN_HITS}、{@code GUARDRAIL_TRIGGERED}）。</p>
+ *
+ * <p>P0+：读取 {@code X-Eval-Membership-Top-N}（缺省用 {@code vagent.eval.api.membership-top-n}），使 {@code sources} 与根级
+ * {@code retrieval_hits} 同前 N 条候选，与 vagent-eval {@code verifyCitationMembership} 的 top_n 对齐（§16.4）。</p>
+ * <p>可选：{@code vagent.eval.api.low-confidence-cosine-distance-threshold} 与 {@code low-confidence-query-substrings}
+ * 在命中非空时收紧为 {@code clarify}，与 P0 {@code rag/low_conf} 对齐（默认关闭）。</p>
+ * <p>P0+ B 线：{@code vagent.eval.api.safety-rules-enabled} 为 true 时，检索前经 {@link EvalChatSafetyGate} 做拒答/澄清短路。</p>
  */
 /**
  * Bean 名显式指定，避免与包内其他 {@code EvalChatController}（若存在）默认名 {@code evalChatController} 冲突。
@@ -83,6 +91,7 @@ public class EvalChatController {
             @RequestHeader(value = "X-Eval-Dataset-Id", required = false) String xEvalDatasetId,
             @RequestHeader(value = "X-Eval-Case-Id", required = false) String xEvalCaseId,
             @RequestHeader(value = "X-Eval-Target-Id", required = false) String xEvalTargetId,
+            @RequestHeader(value = "X-Eval-Membership-Top-N", required = false) String xMembershipTopN,
             @Valid @RequestBody EvalChatRequest request) {
         long startNs = System.nanoTime();
 
@@ -100,6 +109,9 @@ public class EvalChatController {
         if (xEvalDatasetId != null && !xEvalDatasetId.isBlank()) meta.put("x_eval_dataset_id", xEvalDatasetId.trim());
         if (xEvalCaseId != null && !xEvalCaseId.isBlank()) meta.put("x_eval_case_id", xEvalCaseId.trim());
         if (xEvalTargetId != null && !xEvalTargetId.isBlank()) meta.put("x_eval_target_id", xEvalTargetId.trim());
+        if (xMembershipTopN != null && !xMembershipTopN.isBlank()) {
+            meta.put("x_eval_membership_top_n", xMembershipTopN.trim());
+        }
 
         if (!tokenVerifier.verifyOrFalse(xEvalToken)) {
             enforceRetrievalHitIdBoundary(meta, mode, httpRequest);
@@ -111,7 +123,29 @@ public class EvalChatController {
                     capabilitiesEffective(),
                     meta,
                     List.of(),
+                    List.of(),
                     "AUTH");
+        }
+
+        String q = request.getQuery() == null ? "" : request.getQuery().trim();
+        if (evalApiProperties.isSafetyRulesEnabled()) {
+            Optional<EvalChatSafetyGate.Outcome> safety =
+                    EvalChatSafetyGate.evaluatePreRetrieval(q, request.getRequiresCitations());
+            if (safety.isPresent()) {
+                applySafetyShortCircuitMeta(meta, safety.get());
+                enforceRetrievalHitIdBoundary(meta, mode, httpRequest);
+                long latencyMsEarly = (System.nanoTime() - startNs) / 1_000_000L;
+                EvalChatSafetyGate.Outcome o = safety.get();
+                return new EvalChatResponse(
+                        o.answer(),
+                        o.behavior(),
+                        latencyMsEarly,
+                        capabilitiesEffective(),
+                        meta,
+                        List.of(),
+                        List.of(),
+                        o.errorCode());
+            }
         }
 
         boolean retrievalSupported = ragProperties != null && ragProperties.isEnabled();
@@ -132,15 +166,18 @@ public class EvalChatController {
                     capabilitiesEffective(),
                     meta,
                     sources,
+                    List.of(),
                     "POLICY_DISABLED");
         }
 
-        UUID evalUserId = stableEvalUserId(xEvalTargetId);
+        UUID evalUserId = EvalStableUserId.fromEvalTargetId(xEvalTargetId);
         hits = knowledgeRetrieveService.searchForRag(evalUserId, request.getQuery(), ragProperties);
         int candidateTotal = hits.size();
-        int limitN = Math.min(RETRIEVAL_CANDIDATE_LIMIT_N, candidateTotal);
+        int membershipCap = resolveMembershipCap(xMembershipTopN);
+        int limitN = Math.min(membershipCap, candidateTotal);
         List<RetrieveHit> candidates = hits.subList(0, limitN);
         sources = hitsToSources(candidates);
+        List<EvalChatResponse.RetrievalHit> retrievalHits = hitsToRetrievalHits(candidates);
         int hitCount = candidateTotal;
         meta.put("retrieve_hit_count", hitCount);
         meta.put("canonical_hit_id_scheme", "kb_chunk_id");
@@ -153,7 +190,8 @@ public class EvalChatController {
                 "retrieval_hit_id_hashes",
                 buildRetrievalHitIdHashes(xEvalToken, xEvalTargetId, xEvalDatasetId, xEvalCaseId, candidates));
 
-        String q = request.getQuery() == null ? "" : request.getQuery().trim();
+        boolean distanceLowConfidence = isDistanceLowConfidence(hits);
+        boolean vagueSubstringLowConfidence = isVagueQuerySubstringLowConfidence(q);
 
         String answer = "OK";
         String behavior = "answer";
@@ -172,6 +210,20 @@ public class EvalChatController {
             meta.put("low_confidence", true);
             meta.put("low_confidence_reasons", List.of("QUERY_TOO_SHORT"));
             answer = "你的问题描述过短，请补充更多上下文或关键词。";
+            behavior = "clarify";
+            errorCode = "RETRIEVE_LOW_CONFIDENCE";
+        } else if (distanceLowConfidence || vagueSubstringLowConfidence) {
+            lowConfidence = true;
+            meta.put("low_confidence", true);
+            ArrayList<String> reasons = new ArrayList<>(2);
+            if (distanceLowConfidence) {
+                reasons.add("WEAK_TOP_HIT_DISTANCE");
+            }
+            if (vagueSubstringLowConfidence) {
+                reasons.add("VAGUE_QUERY_REFERENCE");
+            }
+            meta.put("low_confidence_reasons", List.copyOf(reasons));
+            answer = "当前检索结果置信度不足，或问题指代不够明确；请补充具体对象、范围或关键词后再试。";
             behavior = "clarify";
             errorCode = "RETRIEVE_LOW_CONFIDENCE";
         } else {
@@ -217,7 +269,45 @@ public class EvalChatController {
                 capabilitiesEffective(),
                 meta,
                 sources,
+                retrievalHits,
                 errorCode);
+    }
+
+    private static void applySafetyShortCircuitMeta(Map<String, Object> meta, EvalChatSafetyGate.Outcome outcome) {
+        meta.put("retrieve_hit_count", 0);
+        meta.put("canonical_hit_id_scheme", "kb_chunk_id");
+        meta.put("retrieval_candidate_limit_n", 0);
+        meta.put("retrieval_candidate_total", 0);
+        meta.put("retrieval_hit_id_hashes", List.of());
+        meta.put("eval_safety_rule_id", outcome.ruleId());
+        if ("deny".equals(outcome.behavior())) {
+            meta.put("low_confidence", false);
+            meta.put("low_confidence_reasons", List.of());
+        } else {
+            meta.put("low_confidence", true);
+            meta.put("low_confidence_reasons", List.of("SAFETY_QUERY_GATE"));
+        }
+    }
+
+    /**
+     * 前 N 条上限：请求头 {@code X-Eval-Membership-Top-N}（合法正整数）与 {@code vagent.eval.api.membership-top-n} 取有效值，
+     * 再与引擎上限 {@value #RETRIEVAL_CANDIDATE_LIMIT_N} 取最小。
+     */
+    private int resolveMembershipCap(String headerValue) {
+        int fallback =
+                Math.max(1, Math.min(evalApiProperties.getMembershipTopN(), RETRIEVAL_CANDIDATE_LIMIT_N));
+        if (headerValue == null || headerValue.isBlank()) {
+            return fallback;
+        }
+        try {
+            int v = Integer.parseInt(headerValue.trim());
+            if (v <= 0) {
+                return fallback;
+            }
+            return Math.min(v, RETRIEVAL_CANDIDATE_LIMIT_N);
+        } catch (NumberFormatException e) {
+            return fallback;
+        }
     }
 
     /**
@@ -327,12 +417,6 @@ public class EvalChatController {
                 .collect(Collectors.toUnmodifiableSet());
     }
 
-    private static UUID stableEvalUserId(String xEvalTargetId) {
-        String t = xEvalTargetId != null ? xEvalTargetId.trim() : "";
-        String seed = "eval-user|target=" + t;
-        return UUID.nameUUIDFromBytes(seed.getBytes(StandardCharsets.UTF_8));
-    }
-
     private static List<EvalChatResponse.Source> hitsToSources(List<RetrieveHit> hits) {
         if (hits == null || hits.isEmpty()) {
             return List.of();
@@ -342,6 +426,43 @@ public class EvalChatController {
                         canonicalHitId(h),
                         canonicalTitle(h),
                         truncateSnippet(h != null ? h.getContent() : null)))
+                .toList();
+    }
+
+    /**
+     * 首条命中余弦距离弱于阈值则低置信（{@link RetrieveHit} 注释：距离越小越相似）。
+     */
+    private boolean isDistanceLowConfidence(List<RetrieveHit> orderedHits) {
+        Double th = evalApiProperties.getLowConfidenceCosineDistanceThreshold();
+        if (th == null || orderedHits == null || orderedHits.isEmpty()) {
+            return false;
+        }
+        double d = orderedHits.get(0).getDistance();
+        if (Double.isNaN(d) || Double.isInfinite(d)) {
+            return false;
+        }
+        return d > th;
+    }
+
+    private boolean isVagueQuerySubstringLowConfidence(String query) {
+        List<String> subs = evalApiProperties.getLowConfidenceQuerySubstrings();
+        if (subs == null || subs.isEmpty() || query == null) {
+            return false;
+        }
+        for (String s : subs) {
+            if (s != null && !s.isBlank() && query.contains(s.strip())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static List<EvalChatResponse.RetrievalHit> hitsToRetrievalHits(List<RetrieveHit> hits) {
+        if (hits == null || hits.isEmpty()) {
+            return List.of();
+        }
+        return hits.stream()
+                .map(h -> new EvalChatResponse.RetrievalHit(canonicalHitId(h), h.getDistance()))
                 .toList();
     }
 

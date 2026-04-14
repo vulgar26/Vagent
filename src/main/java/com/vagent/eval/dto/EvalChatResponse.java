@@ -17,6 +17,12 @@ public class EvalChatResponse {
     private List<Source> sources;
 
     /**
+     * 评测 citation membership（vagent-eval Day6+）用的根级命中列表；与 {@link #sources} 同源候选口径，元素至少含 {@code id}。
+     * S1-D3 起由 {@code EvalChatController} 按 top_n 与检索结果填充；此前可为空数组。
+     */
+    private List<RetrievalHit> retrievalHits;
+
+    /**
      * P0 归因码（附录 D 枚举）。成功时可为 null。
      */
     private String errorCode;
@@ -30,6 +36,7 @@ public class EvalChatResponse {
             Capabilities capabilities,
             Map<String, Object> meta,
             List<Source> sources,
+            List<RetrievalHit> retrievalHits,
             String errorCode) {
         this.answer = answer;
         this.behavior = behavior;
@@ -37,6 +44,7 @@ public class EvalChatResponse {
         this.capabilities = capabilities;
         this.meta = meta;
         this.sources = sources;
+        this.retrievalHits = retrievalHits;
         this.errorCode = errorCode;
     }
 
@@ -88,6 +96,14 @@ public class EvalChatResponse {
         this.sources = sources;
     }
 
+    public List<RetrievalHit> getRetrievalHits() {
+        return retrievalHits;
+    }
+
+    public void setRetrievalHits(List<RetrievalHit> retrievalHits) {
+        this.retrievalHits = retrievalHits;
+    }
+
     public String getErrorCode() {
         return errorCode;
     }
@@ -132,6 +148,43 @@ public class EvalChatResponse {
 
         public void setSnippet(String snippet) {
             this.snippet = snippet;
+        }
+    }
+
+    /**
+     * 根级 {@code retrieval_hits[]} 元素；与 kb {@code RetrieveHit} 区分命名，避免混用。
+     */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public static class RetrievalHit {
+        private String id;
+        /** 可选：相似度/距离导出分数字段，与 eval SSOT 对齐时填入。 */
+        private Double score;
+
+        public RetrievalHit() {}
+
+        public RetrievalHit(String id) {
+            this.id = id;
+        }
+
+        public RetrievalHit(String id, Double score) {
+            this.id = id;
+            this.score = score;
+        }
+
+        public String getId() {
+            return id;
+        }
+
+        public void setId(String id) {
+            this.id = id;
+        }
+
+        public Double getScore() {
+            return score;
+        }
+
+        public void setScore(Double score) {
+            this.score = score;
         }
     }
 

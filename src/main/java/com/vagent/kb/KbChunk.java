@@ -5,7 +5,8 @@ import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 import com.vagent.kb.mybatis.PgVectorFloatArrayTypeHandler;
-import com.vagent.mybatis.typehandler.UuidStringTypeHandler;
+
+import java.util.UUID;
 
 /**
  * 文档分块及向量（度量：余弦距离 {@code <=>}，向量已 L2 归一化）。
@@ -13,15 +14,14 @@ import com.vagent.mybatis.typehandler.UuidStringTypeHandler;
 @TableName(value = "kb_chunks", autoResultMap = true)
 public class KbChunk {
 
-    @TableId(value = "id", type = IdType.ASSIGN_UUID)
-    @TableField(value = "id", typeHandler = UuidStringTypeHandler.class)
-    private String id;
+    @TableId(value = "id", type = IdType.INPUT)
+    private UUID id;
 
-    @TableField(value = "document_id", typeHandler = UuidStringTypeHandler.class)
-    private String documentId;
+    @TableField("document_id")
+    private UUID documentId;
 
-    @TableField(value = "user_id", typeHandler = UuidStringTypeHandler.class)
-    private String userId;
+    @TableField("user_id")
+    private UUID userId;
 
     @TableField("chunk_index")
     private Integer chunkIndex;
@@ -31,27 +31,27 @@ public class KbChunk {
     @TableField(value = "embedding", typeHandler = PgVectorFloatArrayTypeHandler.class)
     private float[] embedding;
 
-    public String getId() {
+    public UUID getId() {
         return id;
     }
 
-    public void setId(String id) {
+    public void setId(UUID id) {
         this.id = id;
     }
 
-    public String getDocumentId() {
+    public UUID getDocumentId() {
         return documentId;
     }
 
-    public void setDocumentId(String documentId) {
+    public void setDocumentId(UUID documentId) {
         this.documentId = documentId;
     }
 
-    public String getUserId() {
+    public UUID getUserId() {
         return userId;
     }
 
-    public void setUserId(String userId) {
+    public void setUserId(UUID userId) {
         this.userId = userId;
     }
 

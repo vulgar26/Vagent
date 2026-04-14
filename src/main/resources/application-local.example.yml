@@ -1,6 +1,9 @@
 # 复制为 application-local.yml 后按需修改（application-local.yml 已加入 .gitignore，勿提交密钥）。
 # 启动：--spring.profiles.active=local 或在 IDE Active profiles 填 local
 #
+# 若在此文件重写 spring.datasource.url：须带 stringtype=unspecified（与 application.yml 一致），否则 users.id 写入 uuid 列会失败。
+# 例：jdbc:postgresql://127.0.0.1:5432/vagent?stringtype=unspecified（与 travel-ai 共用的 ragent 库请勿再写进此文件）
+#
 # 评测接口（可选）：启用后需配置 token-hash；EVAL_DEBUG 明文 hit id 可再加 allow-cidrs 锁网段
 # vagent:
 #   eval:
@@ -10,6 +13,17 @@
 #       debug-enabled: true
 #       allow-cidrs: [ "127.0.0.1/32", "::1/128" ]
 #       trust-forwarded-headers: false
+#       membership-top-n: 8
+#       # P0+ B 线：评测检索前安全短路（默认 true）；与 low-confidence 子串联调时可临时 false
+#       safety-rules-enabled: true
+#       # 可选：首条命中余弦距离 > 阈值则 clarify（按实际嵌入调参；不配则关闭）
+#       low-confidence-cosine-distance-threshold: 0.45
+#       # 可选：query 含下列任一子串则 clarify（对齐 p0_v0_rag_low_conf_* 等，勿在生产随意加长列表）
+#       low-confidence-query-substrings:
+#         - "这个东西"
+#         - "那个项目"
+#         - "含糊不清"
+#         - "缺少关键条件"
 #   guardrails:
 #     reflection:
 #       enabled: true

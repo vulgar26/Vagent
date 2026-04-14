@@ -1,0 +1,28 @@
+【文档用途】本段为 Vagent 评测租户知识库 gold 正文，供向量检索命中；内容尽量覆盖 P0 数据集中需要 answer / requires_citations / rag_basic / contract_shape 的问句关键词。
+
+§1 一句话解释 RAG
+RAG（Retrieval-Augmented Generation，检索增强生成）指：先从知识库或文档中检索与问题相关的片段，再把检索结果与用户问题一起交给大模型生成回答，从而把可核查的外部知识引入生成过程。
+
+§2 RAG 的一个常见失败模式
+常见失败模式是检索到看似相关、实则无关或过时片段，模型仍强行引用，导致事实错误、张冠李戴；或检索为空时模型编造出处。工程上需要空命中策略、低置信门控与引用闭环校验。
+
+§3 评测专用接口必须是非流式（requires_citations_001 对齐）
+评测专用接口（例如 POST /api/v1/eval/chat）采用非流式 JSON 响应，是为了让自动化评测（vagent-eval）在单次 HTTP 响应中拿到完整、可解析的契约字段（answer、behavior、latency_ms、capabilities、meta、sources、retrieval_hits、error_code 等），便于 RunEvaluator 做确定性比对；若使用 SSE 流式分块输出，评测方需要额外拼接与缓冲，契约与错误归因更难稳定。
+
+§4 引用闭环的一句话定义（requires_citations_002 对齐）
+引用闭环指：回答中所引用或标注来源的片段，必须能在同次响应给出的检索候选（例如 sources 与根级 retrieval_hits 的前 N 条）中逐项对应、可核验；不得引用不在候选集合内的虚构 id。
+
+§5 为什么 report 要按 error_code 聚类（requires_citations_003 对齐）
+在评测报表（run.report.v1）中按 error_code 聚类，是为了把失败归因到稳定桶（例如 BEHAVIOR_MISMATCH、CONTRACT_VIOLATION、SKIPPED_UNSUPPORTED），便于比较两次 run 的回归与分桶运营；若只汇总 pass/fail 而不看 error_code TopN，很难定位是契约损坏还是行为与题集不一致。
+
+§6 标准评测响应形态应包含哪些顶层字段（contract_shape_001 对齐）
+一份对齐 P0 的评测响应通常包含顶层字段：answer（字符串）、behavior（字符串）、latency_ms（数值）、capabilities（对象）、meta（对象）、sources（数组）、retrieval_hits（数组）、error_code（可为 null）。meta 内常含 mode、retrieve_hit_count、low_confidence、low_confidence_reasons 等可观测字段，便于与题集标签 rag/empty、rag/low_conf 对齐统计。
+
+§7 capabilities 声明支持 retrieval 却没有 sources 时 eval 应如何判定（contract_shape_002 对齐）
+若 capabilities 声明支持 retrieval，但响应缺少 sources（或 requires_citations 路径缺少可核验命中结构），评测侧应倾向判定为契约违规或能力声明不诚实（CONTRACT_VIOLATION 或等价规则），而不是当作普通行为差异；否则能力声明与实际输出会脱钩，报表不可运营。
+
+§8 非 debug 模式不应返回检索命中明文 id（rag_basic_001 对齐）
+在非调试配置下，响应 meta 不应向客户端泄露明文 retrieval_hit_ids 等敏感列表，以免形成侧信道；需要给评测或审计用的命中证明时，应使用受控的哈希列表（例如 meta.retrieval_hit_id_hashes）或根级 retrieval_hits 的结构化 id，并配合 token、salt、网段策略等安全边界。
+
+§9 什么是 SKIPPED_UNSUPPORTED（rag_basic_002 对齐）
+当数据集期望行为为 tool，但目标（target）声明不支持工具或工具策略为 disabled/stub 时，评测运行器可将该 case 记为 SKIPPED_UNSUPPORTED：表示并非被测系统答错，而是当前目标能力不包含真实工具调用，因而不计入与 tool 相关的通过口径；这与 BEHAVIOR_MISMATCH 不同。

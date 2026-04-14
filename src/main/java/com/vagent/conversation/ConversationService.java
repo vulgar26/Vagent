@@ -34,13 +34,13 @@ public class ConversationService {
      */
     @Transactional(readOnly = true)
     public Optional<Conversation> findOwnedByUser(String conversationId, UUID userId) {
-        String uid = UserIdFormats.canonical(userId);
         String cid = conversationId == null ? "" : conversationId.trim();
         if (cid.isEmpty()) {
             return Optional.empty();
         }
-        Conversation c = conversationMapper.selectById(cid);
-        if (c == null || !uid.equals(c.getUserId())) {
+        UUID convId = UserIdFormats.parseUuid(cid);
+        Conversation c = conversationMapper.selectById(convId);
+        if (c == null || !userId.equals(c.getUserId())) {
             return Optional.empty();
         }
         return Optional.of(c);
@@ -48,10 +48,9 @@ public class ConversationService {
 
     @Transactional(readOnly = true)
     public List<ConversationResponse> listForUser(UUID userId) {
-        String uid = UserIdFormats.canonical(userId);
         List<Conversation> rows = conversationMapper.selectList(
                 Wrappers.lambdaQuery(Conversation.class)
-                        .eq(Conversation::getUserId, uid)
+                        .eq(Conversation::getUserId, userId)
                         .orderByDesc(Conversation::getCreatedAt));
         return rows.stream().map(this::toResponse).toList();
     }
@@ -59,12 +58,13 @@ public class ConversationService {
     @Transactional
     public ConversationResponse create(UUID userId, CreateConversationRequest request) {
         String uid = UserIdFormats.canonical(userId);
-        User user = userMapper.selectById(uid);
+        User user = userMapper.selectById(userId);
         if (user == null) {
             throw new IllegalStateException("用户不存在: " + uid);
         }
         Conversation c = new Conversation();
-        c.setUserId(uid);
+        c.setId(UUID.randomUUID());
+        c.setUserId(userId);
         c.setTitle(normalizeTitle(request.getTitle()));
         c.setCreatedAt(LocalDateTime.now(ZoneOffset.UTC));
         conversationMapper.insert(c);
@@ -81,7 +81,7 @@ public class ConversationService {
 
     private ConversationResponse toResponse(Conversation c) {
         return new ConversationResponse(
-                c.getId() != null ? c.getId().trim() : "",
+                c.getId() != null ? UserIdFormats.canonical(c.getId()) : "",
                 c.getTitle(),
                 c.getCreatedAt().atOffset(ZoneOffset.UTC).toInstant());
     }

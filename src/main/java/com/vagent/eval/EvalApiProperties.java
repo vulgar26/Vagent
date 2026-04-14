@@ -46,6 +46,30 @@ public class EvalApiProperties {
      */
     private boolean trustForwardedHeaders = false;
 
+    /**
+     * 与 vagent-eval {@code eval.membership.top-n} 对齐的默认前 N 条（请求未带 {@code X-Eval-Membership-Top-N} 时使用）。
+     * 实际写入 {@code sources}/{@code retrieval_hits} 时尚受评测控制器内候选上限（≤50）约束。
+     */
+    private int membershipTopN = 8;
+
+    /**
+     * 余弦距离门控（与 {@code KbChunkMapper} 中 {@code <=>} 一致）：**越小越相似**。
+     * 若<strong>已排序</strong>检索结果的首条距离字段 <strong>大于</strong>该值，则视为低置信并走 {@code clarify}（与 P0 {@code rag/low_conf} 对齐）。
+     * {@code null} 或未配置则关闭，仅靠空命中与过短 query。
+     */
+    private Double lowConfidenceCosineDistanceThreshold;
+
+    /**
+     * 命中非空时：若用户 query 包含任一条子串（原样子串匹配），则视为低置信并走 {@code clarify}（可选，默认空列表关闭）。
+     * 用于对齐 dataset 中指代不明类问句；生产勿随意填长列表以免误伤。
+     */
+    private List<String> lowConfidenceQuerySubstrings = new ArrayList<>();
+
+    /**
+     * P0+ B 线：是否启用 {@link EvalChatSafetyGate}（检索前短路拒答/澄清）。默认开启；单测可关。
+     */
+    private boolean safetyRulesEnabled = true;
+
     public boolean isEnabled() {
         return enabled;
     }
@@ -84,6 +108,39 @@ public class EvalApiProperties {
 
     public void setTrustForwardedHeaders(boolean trustForwardedHeaders) {
         this.trustForwardedHeaders = trustForwardedHeaders;
+    }
+
+    public int getMembershipTopN() {
+        return membershipTopN > 0 ? membershipTopN : 8;
+    }
+
+    public void setMembershipTopN(int membershipTopN) {
+        this.membershipTopN = membershipTopN;
+    }
+
+    public Double getLowConfidenceCosineDistanceThreshold() {
+        return lowConfidenceCosineDistanceThreshold;
+    }
+
+    public void setLowConfidenceCosineDistanceThreshold(Double lowConfidenceCosineDistanceThreshold) {
+        this.lowConfidenceCosineDistanceThreshold = lowConfidenceCosineDistanceThreshold;
+    }
+
+    public List<String> getLowConfidenceQuerySubstrings() {
+        return lowConfidenceQuerySubstrings;
+    }
+
+    public void setLowConfidenceQuerySubstrings(List<String> lowConfidenceQuerySubstrings) {
+        this.lowConfidenceQuerySubstrings =
+                lowConfidenceQuerySubstrings != null ? lowConfidenceQuerySubstrings : new ArrayList<>();
+    }
+
+    public boolean isSafetyRulesEnabled() {
+        return safetyRulesEnabled;
+    }
+
+    public void setSafetyRulesEnabled(boolean safetyRulesEnabled) {
+        this.safetyRulesEnabled = safetyRulesEnabled;
     }
 }
 

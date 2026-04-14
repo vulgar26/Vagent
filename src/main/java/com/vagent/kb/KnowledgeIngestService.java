@@ -40,13 +40,14 @@ public class KnowledgeIngestService {
 
     @Transactional
     public IngestDocumentResponse ingest(UUID userId, String title, String content) {
-        String uid = UserIdFormats.canonical(userId);
-        User user = userMapper.selectById(uid);
+        String uidStr = UserIdFormats.canonical(userId);
+        User user = userMapper.selectById(userId);
         if (user == null) {
-            throw new IllegalStateException("用户不存在: " + uid);
+            throw new IllegalStateException("用户不存在: " + uidStr);
         }
         KbDocument doc = new KbDocument();
-        doc.setUserId(uid);
+        doc.setId(UUID.randomUUID());
+        doc.setUserId(userId);
         doc.setTitle(title.trim());
         doc.setCreatedAt(LocalDateTime.now(ZoneOffset.UTC));
         kbDocumentMapper.insert(doc);
@@ -55,13 +56,14 @@ public class KnowledgeIngestService {
         int idx = 0;
         for (String chunkText : chunks) {
             KbChunk row = new KbChunk();
+            row.setId(UUID.randomUUID());
             row.setDocumentId(doc.getId());
-            row.setUserId(uid);
+            row.setUserId(userId);
             row.setChunkIndex(idx++);
             row.setContent(chunkText);
             row.setEmbedding(embeddingClient.embed(chunkText));
             kbChunkMapper.insert(row);
         }
-        return new IngestDocumentResponse(doc.getId(), chunks.size());
+        return new IngestDocumentResponse(UserIdFormats.canonical(doc.getId()), chunks.size());
     }
 }

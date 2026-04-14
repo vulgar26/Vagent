@@ -8,6 +8,7 @@ import com.vagent.auth.dto.RegisterRequest;
 import com.vagent.security.JwtProperties;
 import com.vagent.security.JwtService;
 import com.vagent.user.User;
+import com.vagent.user.UserIdFormats;
 import com.vagent.user.UserMapper;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -16,6 +17,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
+import java.util.UUID;
 
 /**
  * 注册与登录业务：写用户表、校验密码、签发 JWT。
@@ -49,6 +51,7 @@ public class AuthService {
             throw new DuplicateUsernameException(username);
         }
         User user = new User();
+        user.setId(UUID.randomUUID());
         user.setUsername(username);
         user.setPasswordHash(passwordEncoder.encode(request.getPassword()));
         user.setCreatedAt(LocalDateTime.now(ZoneOffset.UTC));
@@ -75,6 +78,6 @@ public class AuthService {
                 token,
                 "Bearer",
                 jwtProperties.getExpirationSeconds(),
-                user.getId() != null ? user.getId().trim() : "");
+                user.getId() != null ? UserIdFormats.canonical(user.getId()) : "");
     }
 }

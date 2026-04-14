@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.vagent.chat.message.Message;
 import com.vagent.chat.message.MessageService;
+import com.vagent.user.UserIdFormats;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -69,8 +70,9 @@ class M4MessagePersistenceIntegrationTest {
 
         String conversationId = objectMapper.readTree(convBody).get("id").asText();
 
-        messageService.saveUserMessage(conversationId, userIdCompact, "你好");
-        messageService.saveAssistantMessage(conversationId, userIdCompact, "我在");
+        var userUuid = UserIdFormats.parseUuid(userIdCompact);
+        messageService.saveUserMessage(conversationId, userUuid, "你好");
+        messageService.saveAssistantMessage(conversationId, userUuid, "我在");
 
         List<Message> recent = messageService.listRecentForConversation(conversationId, 10);
         assertThat(recent).hasSize(2);

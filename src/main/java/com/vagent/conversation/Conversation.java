@@ -4,43 +4,40 @@ import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
-import com.vagent.mybatis.typehandler.UuidStringTypeHandler;
 
 import java.time.LocalDateTime;
+import java.util.UUID;
 
 /**
- * 对话会话（{@code conversationId} 载体）。
- * <p>
- * <b>与 User 关系：</b> 仅存 {@link #userId} 外键，不嵌套实体，便于 MyBatis 映射与查询。
+ * 对话会话。{@link #userId} 外键为 PostgreSQL {@code uuid}。
  */
 @TableName(value = "conversations", autoResultMap = true)
 public class Conversation {
 
-    @TableId(value = "id", type = IdType.ASSIGN_UUID)
-    @TableField(value = "id", typeHandler = UuidStringTypeHandler.class)
-    private String id;
+    @TableId(value = "id", type = IdType.INPUT)
+    private UUID id;
 
-    @TableField(value = "user_id", typeHandler = UuidStringTypeHandler.class)
-    private String userId;
+    @TableField("user_id")
+    private UUID userId;
 
     private String title;
 
     @TableField("created_at")
     private LocalDateTime createdAt;
 
-    public String getId() {
+    public UUID getId() {
         return id;
     }
 
-    public void setId(String id) {
+    public void setId(UUID id) {
         this.id = id;
     }
 
-    public String getUserId() {
+    public UUID getUserId() {
         return userId;
     }
 
-    public void setUserId(String userId) {
+    public void setUserId(UUID userId) {
         this.userId = userId;
     }
 

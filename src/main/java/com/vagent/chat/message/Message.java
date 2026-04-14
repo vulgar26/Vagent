@@ -4,45 +4,29 @@ import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
-import com.vagent.mybatis.typehandler.UuidStringTypeHandler;
 
 import java.time.LocalDateTime;
+import java.util.UUID;
 
 /**
- * 会话内一条落库消息（仅 USER / ASSISTANT）。
- * <p>
- * <b>为什么要有这张表：</b>
- * 把「多轮对话」持久化，后续 RAG 编排才能按时间顺序取出历史，拼进 {@link com.vagent.llm.LlmMessage}。
- * SYSTEM 提示（含动态检索到的知识）通常不落库：它是每次请求现场拼出来的，避免与「用户/助手真实发言」混在一起。
- * <p>
- * <b>与 conversations 的关系：</b>
- * {@link #conversationId} 指向会话主表；同一用户下的多条消息通过会话聚合。删除会话时由数据库 {@code ON DELETE CASCADE}
- * 级联删除消息，避免孤儿行。
- * <p>
- * <b>为什么同时存 user_id：</b>
- * 与项目里其它表一致，便于审计、按用户排查问题；检索历史时仍以 conversation_id 为主键过滤。
+ * 会话内一条落库消息（仅 USER / ASSISTANT）。外键列为 {@code uuid}。
  */
 @TableName(value = "messages", autoResultMap = true)
 public class Message {
 
-    /** 与 OpenAI Chat 中 user/assistant 字符串对齐，便于代码阅读与排查。 */
     public static final String ROLE_USER = "USER";
 
     public static final String ROLE_ASSISTANT = "ASSISTANT";
 
-    @TableId(value = "id", type = IdType.ASSIGN_UUID)
-    @TableField(value = "id", typeHandler = UuidStringTypeHandler.class)
-    private String id;
+    @TableId(value = "id", type = IdType.INPUT)
+    private UUID id;
 
-    @TableField(value = "conversation_id", typeHandler = UuidStringTypeHandler.class)
-    private String conversationId;
+    @TableField("conversation_id")
+    private UUID conversationId;
 
-    @TableField(value = "user_id", typeHandler = UuidStringTypeHandler.class)
-    private String userId;
+    @TableField("user_id")
+    private UUID userId;
 
-    /**
-     * {@link #ROLE_USER} 或 {@link #ROLE_ASSISTANT}；不设枚举是为了与 DB 字符串列直接对应，减少映射层转换。
-     */
     private String role;
 
     private String content;
@@ -50,27 +34,27 @@ public class Message {
     @TableField("created_at")
     private LocalDateTime createdAt;
 
-    public String getId() {
+    public UUID getId() {
         return id;
     }
 
-    public void setId(String id) {
+    public void setId(UUID id) {
         this.id = id;
     }
 
-    public String getConversationId() {
+    public UUID getConversationId() {
         return conversationId;
     }
 
-    public void setConversationId(String conversationId) {
+    public void setConversationId(UUID conversationId) {
         this.conversationId = conversationId;
     }
 
-    public String getUserId() {
+    public UUID getUserId() {
         return userId;
     }
 
-    public void setUserId(String userId) {
+    public void setUserId(UUID userId) {
         this.userId = userId;
     }
 

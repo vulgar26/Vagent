@@ -4,23 +4,20 @@ import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
-import com.vagent.mybatis.typehandler.UuidStringTypeHandler;
 
 import java.time.LocalDateTime;
+import java.util.UUID;
 
 /**
  * 应用用户（登录主体），与会话、后续消息、检索租户隔离关联。
  * <p>
- * <b>持久化：</b> MyBatis-Plus + PostgreSQL；主键 {@link #id} 为规范 UUID 字符串（小写+连字符），列类型 {@code uuid}，与 JWT {@code sub} 一致。
- * <p>
- * <b>时间字段：</b> 使用 {@link LocalDateTime} 与 {@code TIMESTAMP(6)} 映射简单可靠；对外 DTO 再转为 {@link java.time.Instant} 如需。
+ * 主键列类型为 PostgreSQL {@code uuid}：Java 侧使用 {@link UUID}，避免 {@code selectById(String)} 与 {@code uuid} 比较报错。
  */
 @TableName(value = "users", autoResultMap = true)
 public class User {
 
-    @TableId(value = "id", type = IdType.ASSIGN_UUID)
-    @TableField(value = "id", typeHandler = UuidStringTypeHandler.class)
-    private String id;
+    @TableId(value = "id", type = IdType.INPUT)
+    private UUID id;
 
     private String username;
 
@@ -30,11 +27,11 @@ public class User {
     @TableField("created_at")
     private LocalDateTime createdAt;
 
-    public String getId() {
+    public UUID getId() {
         return id;
     }
 
-    public void setId(String id) {
+    public void setId(UUID id) {
         this.id = id;
     }
 

@@ -2,7 +2,6 @@ package com.vagent.security;
 
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.vagent.user.User;
-import com.vagent.user.UserIdFormats;
 import com.vagent.user.UserMapper;
 import io.jsonwebtoken.JwtException;
 import jakarta.servlet.FilterChain;
@@ -95,8 +94,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
      * 以 JWT 解析结果查库；{@code sub} 无对应行时尝试用 {@code uname}（清库重建后 ID 会变，签名仍有效）。
      */
     private VagentUserPrincipal resolvePrincipalAgainstDatabase(VagentUserPrincipal parsed) {
-        String subjectKey = UserIdFormats.canonical(parsed.getUserId());
-        User user = userMapper.selectById(subjectKey);
+        User user = userMapper.selectById(parsed.getUserId());
         if (user == null
                 && jwtProperties.isRemapSubjectByUsernameWhenUserMissing()
                 && parsed.getUsername() != null) {
@@ -108,11 +106,10 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         if (user == null) {
             return null;
         }
-        String rawId = user.getId() != null ? user.getId().trim() : "";
-        if (rawId.isEmpty()) {
+        UUID userId = user.getId();
+        if (userId == null) {
             return null;
         }
-        UUID userId = JwtService.parseUserIdFromSubject(rawId);
         String username = user.getUsername() != null ? user.getUsername().trim() : parsed.getUsername();
         return new VagentUserPrincipal(userId, username);
     }

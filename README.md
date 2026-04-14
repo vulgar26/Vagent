@@ -46,13 +46,21 @@
 
 ## 可选：Docker Compose（PostgreSQL + pgvector）
 
-若本机未装 PostgreSQL，可用仓库根目录 **`docker-compose.yml`** 启动与 `application.yml` 默认一致的库（**`ragent` / `postgres`**）：
+若本机未装 PostgreSQL，可用仓库根目录 **`docker-compose.yml`** 启动与 `application.yml` 默认一致的库（**`vagent` / `postgres`**）：
 
 ```bash
 docker compose up -d
 ```
 
-待健康检查通过后执行 `mvn spring-boot:run`（默认连接 `localhost:5432`）。首次需保证镜像能拉取 `pgvector/pgvector:pg16`。
+待健康检查通过后执行 `./mvnw spring-boot:run`（Windows 可用 `mvnw.cmd`；默认连接 `localhost:5432`）。首次需保证镜像能拉取 `pgvector/pgvector:pg16`。
+
+**已与 travel-ai 共用同一 pgvector 容器？** 不必再起一个 Docker：在同一 PostgreSQL **实例**里再建一个**库**即可——travel-ai 继续用库名 `ragent`，Vagent 使用**库名 `vagent`**（与 `application.yml` 默认 URL 一致）。在容器内执行：
+
+```bash
+docker exec -it <你的postgres容器名> psql -U postgres -c "CREATE DATABASE vagent;"
+```
+
+然后在 DBeaver 里连接 **`localhost:5432` → 数据库 `vagent`**，启动 Vagent 让 Flyway 建表；**不要**在 `ragent` 库里混跑两套 Flyway。
 
 ## 通义千问（DashScope，U1）
 
@@ -110,7 +118,7 @@ docker compose up -d
 
 ### 容器镜像与 Kubernetes（演示）
 
-1. **构建 JAR**：`mvn -DskipTests package`  
+1. **构建 JAR**：`./mvnw -DskipTests package`（Windows：`mvnw.cmd -DskipTests package`）  
 2. **镜像**：仓库根目录 `Dockerfile`，`docker build -t vagent:local .`（需先有 `target/vagent-0.1.0-SNAPSHOT.jar`）。  
 3. **K8s 示例清单**：`deploy/k8s/`（命名空间 `vagent-demo`、PostgreSQL + Vagent Deployment/Service）。**先修改 Secret 中的密码与 JWT 密钥**，再：
 
@@ -125,7 +133,7 @@ kubectl -n vagent-demo port-forward svc/vagent 8080:8080
 ## 环境
 
 - JDK 17+
-- Maven 3.8+
+- **构建**：推荐用仓库内 **Maven Wrapper**（`./mvnw` / `mvnw.cmd`），无需全局安装 Maven；若已安装 Maven 3.8+，也可直接使用 `mvn`
 - **本地运行**：PostgreSQL 14+（或兼容版本），已创建库与用户（与 `application.yml` 一致）；**M2** 需能执行 `CREATE EXTENSION vector`（通常需超级用户先装扩展一次）
 - **JWT**：`vagent.security.jwt.remap-subject-by-username-when-user-missing` 默认为 **`false`**（`sub` 无对应用户即 401，需重新登录）；本地清库联调可在 `application-local.yml` 中设为 `true`，见 `application-local.example.yml`
 - **生产**：`application-prod.yml`（`--spring.profiles.active=prod`）要求 **`VAGENT_SECURITY_JWT_SECRET`**、收紧 **CORS**、仅暴露 **`health`**、默认 **DashScope** + **`empty-hits-behavior: no-llm`**；K8s 示例已为 Deployment 设置 `SPRING_PROFILES_ACTIVE=prod`，并须自行配置 **`DASHSCOPE_API_KEY`** 等密钥
@@ -149,10 +157,14 @@ ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO vagent;
 
 **M2 / U2**：`V2__pgvector_kb.sql` / `schema-vector.sql` 内含 `CREATE EXTENSION IF NOT EXISTS vector` 与 `kb_*` 表；向量维度默认 **1024**，与 `vagent.embedding.dimensions`、`KbChunkMapper` 中 `vector(1024)` 须一致（从旧版 128 升级须见 [U2-实现说明.md](docs/U2-实现说明.md)）。
 
+**vagent-eval / P0 评测**：`target_id=vagent` 时 KB 租户、空库脚本与「两轮跑」策略见 [scripts/README-eval-kb.md](scripts/README-eval-kb.md)。
+
 ## 构建与测试
 
+推荐使用仓库根目录的 **Maven Wrapper**（`./mvnw`，Windows 为 `mvnw.cmd`）：首次运行会从中央仓库下载 **Maven 3.9.9** 到本机 `~/.m2/wrapper/`，无需单独安装 Maven。
+
 ```bash
-mvn test
+./mvnw test
 ```
 
 测试使用 **Spring profile `test`** + 内存 H2（`MODE=PostgreSQL`），**仅加载** `schema-core.sql`（无 pgvector 表）。
@@ -160,7 +172,7 @@ mvn test
 验证 **真实 pgvector** 时（需本机 **Docker**），单独运行：
 
 ```bash
-mvn test -Dtest=M2KnowledgeVectorIntegrationTest
+./mvnw test -Dtest=M2KnowledgeVectorIntegrationTest
 ```
 
 （默认 Surefire 已排除该类，避免首次拉取 `pgvector/pgvector` 镜像耗时过长。）
@@ -169,14 +181,14 @@ mvn test -Dtest=M2KnowledgeVectorIntegrationTest
 
 ## 最小演示（RAG + fake-stream）
 
-1. 启动 DB（本机 PG 或 `docker compose up -d`），`mvn spring-boot:run`。  
+1. 启动 DB（本机 PG 或 `docker compose up -d`），`./mvnw spring-boot:run`。  
 2. `application.yml` 中设 `vagent.llm.provider: fake-stream`（可选，便于看到分块）。  
 3. `POST /api/v1/auth/register` → `POST /api/v1/conversations` → `POST /api/v1/kb/documents` 入库 → `POST .../chat/stream` 读 SSE（首包 `meta` 含 `taskId`、`branch`、`hitCount`）。
 
 ## 运行
 
 ```bash
-mvn spring-boot:run
+./mvnw spring-boot:run
 ```
 
 健康检查：<http://localhost:8080/actuator/health>（端口以 `application.yml` 为准）。

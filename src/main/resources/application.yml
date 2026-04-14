@@ -1,7 +1,7 @@
 # =============================================================================
 # Vagent 应用配置（M0–M5 + U1–U5；详见 docs/Mx-实现说明.md、docs/U1-实现说明.md 等）
 # =============================================================================
-# 本地需先创建库与用户，并授权 schema public（见 README）；测试用 test profile + H2，不依赖本机 PG。
+# 本地 PostgreSQL 库名默认 **vagent**（勿与 travel-ai 的 ragent 混用）；测试用 test profile + H2，不依赖本机 PG。
 
 server:
   port: 8080
@@ -23,7 +23,8 @@ management:
 
 spring:
   datasource:
-    url: jdbc:postgresql://127.0.0.1:5432/ragent
+    # stringtype=unspecified：INSERT 时 String 主键可隐式 cast 到 PG uuid（MP 对 @TableId 可能不走 @TableField typeHandler）
+    url: jdbc:postgresql://127.0.0.1:5432/vagent?stringtype=unspecified
     username: postgres
     password: postgres
     driver-class-name: org.postgresql.Driver
@@ -36,6 +37,8 @@ spring:
       mode: never
 
 mybatis-plus:
+  # 仅 UuidNativeTypeHandler（UUID↔uuid）。UuidStringTypeHandler 在 persistence 包，勿列入
+  type-handlers-package: com.vagent.mybatis.typehandler
   configuration:
     map-underscore-to-camel-case: true
 
@@ -58,6 +61,13 @@ vagent:
       allow-cidrs: []
       # 仅在反向代理可信地写入 X-Forwarded-For 时开启；直连场景勿开，避免客户端伪造 IP 绕过 allowlist
       trust-forwarded-headers: ${VAGENT_EVAL_API_TRUST_FORWARDED_HEADERS:false}
+      # 与 eval membership.top-n 对齐；可被请求头 X-Eval-Membership-Top-N 覆盖
+      membership-top-n: ${VAGENT_EVAL_API_MEMBERSHIP_TOP_N:8}
+      # 以下为可选门控（默认不配置 = 关闭）；对齐 P0 rag/low_conf 见 scripts/README-eval-kb.md
+      # low-confidence-cosine-distance-threshold: 0.45
+      # low-confidence-query-substrings: []
+      # P0+ B 线：检索前安全/拒答短路（EvalChatSafetyGate）；单测可设 false
+      safety-rules-enabled: ${VAGENT_EVAL_API_SAFETY_RULES_ENABLED:true}
   # M5：检索前改写 + 规则意图（寒暄/澄清/RAG）；详见 docs/M5-实现说明.md
   orchestration:
     intent-enabled: true

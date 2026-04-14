@@ -1,6 +1,7 @@
 package com.vagent.security;
 
 import com.vagent.user.User;
+import com.vagent.user.UserIdFormats;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.JwtException;
 import io.jsonwebtoken.Jwts;
@@ -48,7 +49,8 @@ public class JwtService {
     public String createAccessToken(User user) {
         Instant now = Instant.now();
         Instant exp = now.plusSeconds(properties.getExpirationSeconds());
-        String subject = user != null && user.getId() != null ? user.getId().trim() : "";
+        String subject =
+                user != null && user.getId() != null ? UserIdFormats.canonical(user.getId()) : "";
         String uname = user != null && user.getUsername() != null ? user.getUsername().trim() : "";
         return Jwts.builder()
                 .subject(subject)
@@ -80,19 +82,10 @@ public class JwtService {
      * MyBatis-Plus {@code IdType.ASSIGN_UUID} 可能生成无连字符的 32 位十六进制；{@link UUID#fromString} 需要标准带连字符形式。
      */
     static UUID parseUserIdFromSubject(String subject) {
-        if (subject == null) {
-            throw new JwtException("JWT subject 为空");
+        try {
+            return UserIdFormats.parseUuid(subject);
+        } catch (IllegalArgumentException e) {
+            throw new JwtException("JWT subject 无效", e);
         }
-        subject = subject.trim();
-        if (subject.isBlank()) {
-            throw new JwtException("JWT subject 为空");
-        }
-        if (subject.length() == 32 && subject.indexOf('-') < 0) {
-            String s = subject.toLowerCase();
-            return UUID.fromString(
-                    s.substring(0, 8) + "-" + s.substring(8, 12) + "-" + s.substring(12, 16) + "-"
-                            + s.substring(16, 20) + "-" + s.substring(20));
-        }
-        return UUID.fromString(subject);
     }
 }

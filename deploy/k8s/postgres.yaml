@@ -52,4 +52,4 @@ spec:
                   name: postgres-secret
                   key: password
             - name: POSTGRES_DB
-              value: ragent
+              value: vagent

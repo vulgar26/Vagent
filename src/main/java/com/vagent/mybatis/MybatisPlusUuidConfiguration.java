@@ -8,9 +8,7 @@ import org.springframework.context.annotation.Primary;
 import java.util.Locale;
 import java.util.UUID;
 
-/**
- * 主键使用与 PostgreSQL {@code uuid} 列一致的规范字符串（小写 + 连字符），与 JWT {@code sub} 对齐。
- */
+/** MyBatis-Plus：{@link IdentifierGenerator}（{@code IdType.ASSIGN_UUID} 生成规范小写 UUID 字符串）。 */
 @Configuration
 public class MybatisPlusUuidConfiguration {
 

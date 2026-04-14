@@ -1,4 +1,5 @@
-# 本地 PostgreSQL + pgvector，与 application.yml 默认库名/账号一致（ragent / postgres）。
+# 本地 PostgreSQL + pgvector，与 application.yml 默认库名/账号一致（库名 vagent，用户 postgres）。
+# 若已与 travel-ai 共用其它 pgvector 容器：勿重复起本服务（端口冲突）；在同一实例上 CREATE DATABASE vagent 即可。
 # 使用：docker compose up -d
 services:
   postgres:
@@ -7,11 +8,11 @@ services:
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: ragent
+      POSTGRES_DB: vagent
     ports:
       - "5432:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d ragent"]
+      test: ["CMD-SHELL", "pg_isready -U postgres -d vagent"]
       interval: 5s
       timeout: 5s
       retries: 5

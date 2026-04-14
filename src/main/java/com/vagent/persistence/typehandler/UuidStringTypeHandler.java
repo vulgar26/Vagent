@@ -1,8 +1,7 @@
-package com.vagent.mybatis.typehandler;
+package com.vagent.persistence.typehandler;
 
 import org.apache.ibatis.type.BaseTypeHandler;
 import org.apache.ibatis.type.JdbcType;
-import org.apache.ibatis.type.MappedTypes;
 
 import java.sql.CallableStatement;
 import java.sql.PreparedStatement;
@@ -13,8 +12,11 @@ import java.util.UUID;
 
 /**
  * Java {@link String}（规范小写带连字符 UUID）与 JDBC {@code UUID} 列（PostgreSQL / H2）互转。
+ * <p>
+ * 放在 {@code com.vagent.persistence.typehandler}，<strong>不要</strong>列入
+ * {@code mybatis-plus.type-handlers-package}，否则会被全局注册，误处理普通 {@link String} 参数（如 {@code username}）。
+ * 仅在实体 {@code @TableField(typeHandler = …)} 上显式引用。
  */
-@MappedTypes(String.class)
 public class UuidStringTypeHandler extends BaseTypeHandler<String> {
 
     @Override
