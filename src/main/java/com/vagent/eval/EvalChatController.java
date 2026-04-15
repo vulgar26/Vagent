@@ -4,6 +4,7 @@ import com.vagent.chat.rag.RagProperties;
 import com.vagent.eval.dto.EvalChatRequest;
 import com.vagent.eval.dto.EvalChatResponse;
 import com.vagent.kb.KnowledgeRetrieveService;
+import com.vagent.kb.RagRetrieveResult;
 import com.vagent.kb.dto.RetrieveHit;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
@@ -171,7 +172,10 @@ public class EvalChatController {
         }
 
         UUID evalUserId = EvalStableUserId.fromEvalTargetId(xEvalTargetId);
-        hits = knowledgeRetrieveService.searchForRag(evalUserId, request.getQuery(), ragProperties);
+        RagRetrieveResult retrieveResult =
+                knowledgeRetrieveService.searchForRag(evalUserId, request.getQuery(), ragProperties);
+        hits = retrieveResult.hits();
+        retrieveResult.putRetrievalTrace(meta);
         int candidateTotal = hits.size();
         int membershipCap = resolveMembershipCap(xMembershipTopN);
         int limitN = Math.min(membershipCap, candidateTotal);

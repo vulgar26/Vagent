@@ -104,6 +104,12 @@ docker exec -it <你的postgres容器名> psql -U postgres -c "CREATE DATABASE v
 - 联调 API：`GET /api/v1/mcp/tools`、`POST /api/v1/mcp/tools/{name}`（需登录，且 MCP 启用时才有 Client Bean）。  
 - **`GET /api/v1/mcp/settings`**：返回开关、`baseUrl`、协议版本、**白名单**等（不依赖 MCP Server 可达）。详见 [docs/U6-实现说明.md](docs/U6-实现说明.md)、[docs/U7-实现说明.md](docs/U7-实现说明.md)。
 
+## P0+：评测接口（Eval）与安全/拒答门控
+
+- **接口**：`POST /api/v1/eval/chat`（snake_case；用于 vagent-eval 回归，不等同于主线对话接口）。
+- **检索前安全门控**：当 `vagent.eval.api.safety-rules-enabled=true` 时，会在检索前运行 `EvalChatSafetyGate`，对 `attack/*`、`behavior_deny_*`、`rag_empty_002`、`answer_005`（伪造引用）等题做 **deny/clarify 短路**，并在 `meta.eval_safety_rule_id` 归因。
+- **鲁棒性**：门控对输入做轻量归一化（大小写/全角半角/空白与常见标点折叠），再用少量正则/关键词组匹配，避免因“加符号/换行/奇怪格式”导致规则失效。
+
 ### 简易前端（静态页）
 
 - 启动后浏览器打开 **`http://localhost:8080/`**（或 **`/index.html`**）：注册 / 登录、创建会话、用 **fetch** 读 **SSE** 流（带 `Authorization`）。  

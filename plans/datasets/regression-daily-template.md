@@ -76,6 +76,8 @@
 - **附件或链接**：（粘贴 CSV 路径 / 飞书表格）  
 - **按 error_code 聚类摘要**：（如 UNKNOWN ×N → owner A；CONTRACT ×M → owner C）
 
+> 建议：将每次 run 导出的 CSV、环境快照（如 `env.json`）等产物统一放到 `plans/datasets/artifacts/`，文件名包含 `run_id`，避免与 SSOT 文档混放。
+
 ---
 
 ## 今日结论

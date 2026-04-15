@@ -44,4 +44,20 @@ public interface KbChunkMapper extends BaseMapper<KbChunk> {
             LIMIT #{topK}
             """)
     List<RetrieveHit> searchNearestGlobal(@Param("qv") String qv, @Param("topK") int topK);
+
+    /**
+     * P1-0b：关键词通道（ILIKE 子串匹配）。仅用于 hybrid；pattern 须由调用方转义并限制长度。
+     */
+    @Select("""
+            SELECT c.id AS chunk_id,
+                   c.document_id AS document_id,
+                   c.content AS content,
+                   1.0 AS distance
+            FROM kb_chunks c
+            WHERE c.user_id = CAST(#{userId} AS uuid)
+              AND c.content ILIKE CAST(#{pattern} AS text)
+            LIMIT #{topK}
+            """)
+    List<RetrieveHit> searchLexical(
+            @Param("userId") String userId, @Param("pattern") String pattern, @Param("topK") int topK);
 }

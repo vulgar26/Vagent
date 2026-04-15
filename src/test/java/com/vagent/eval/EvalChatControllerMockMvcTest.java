@@ -2,6 +2,7 @@ package com.vagent.eval;
 
 import com.vagent.chat.rag.RagProperties;
 import com.vagent.kb.KnowledgeRetrieveService;
+import com.vagent.kb.RagRetrieveResult;
 import com.vagent.kb.dto.RetrieveHit;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -51,7 +52,7 @@ class EvalChatControllerMockMvcTest {
     @Test
     void membershipTopNHeaderLimitsSourcesAndRetrievalHits() throws Exception {
         when(knowledgeRetrieveService.searchForRag(any(UUID.class), any(String.class), any(RagProperties.class)))
-                .thenReturn(fiveChunkHits());
+                .thenReturn(RagRetrieveResult.vectorOnly(fiveChunkHits()));
 
         String body =
                 """
@@ -81,7 +82,7 @@ class EvalChatControllerMockMvcTest {
     @Test
     void defaultMembershipTopNWhenHeaderAbsent() throws Exception {
         when(knowledgeRetrieveService.searchForRag(any(UUID.class), any(String.class), any(RagProperties.class)))
-                .thenReturn(fiveChunkHits());
+                .thenReturn(RagRetrieveResult.vectorOnly(fiveChunkHits()));
 
         String body =
                 """

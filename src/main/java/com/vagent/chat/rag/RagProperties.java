@@ -21,6 +21,8 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * {@link EmptyHitsBehavior#NO_LLM} 时不调用 LLM，仅推送 {@link #emptyHitsNoLlmMessage}；{@link EmptyHitsBehavior#ALLOW_LLM} 保持历史行为。
  * <p>
  * <b>second-path（U5）：</b>在「无命中 / 主路命中偏少 / 检索 query 过短」时可合并第二路<strong>跨租户</strong>向量召回；默认关闭，见 {@link SecondPath}。
+ * <p>
+ * <b>P1-0b hybrid + rerank：</b>在向量主路之上增加关键词通道并 RRF 融合；可选 rerank（默认关闭，失败降级）。见 {@code plans/vagent-upgrade.md}。
  */
 @ConfigurationProperties(prefix = "vagent.rag")
 public class RagProperties {
@@ -55,6 +57,12 @@ public class RagProperties {
      * U5 第二路召回；与 {@code vagent.rag.second-path.*} 绑定。
      */
     private SecondPath secondPath = new SecondPath();
+
+    /** P1-0b：混合检索（向量 + 关键词 ILIKE）；默认关闭。 */
+    private Hybrid hybrid = new Hybrid();
+
+    /** P1-0b：融合后可选重排；默认关闭（未接入供应商时显式 skipped）。 */
+    private Rerank rerank = new Rerank();
 
     public boolean isEnabled() {
         return enabled;
@@ -102,6 +110,22 @@ public class RagProperties {
 
     public void setSecondPath(SecondPath secondPath) {
         this.secondPath = secondPath;
+    }
+
+    public Hybrid getHybrid() {
+        return hybrid;
+    }
+
+    public void setHybrid(Hybrid hybrid) {
+        this.hybrid = hybrid != null ? hybrid : new Hybrid();
+    }
+
+    public Rerank getRerank() {
+        return rerank;
+    }
+
+    public void setRerank(Rerank rerank) {
+        this.rerank = rerank != null ? rerank : new Rerank();
     }
 
     /**
@@ -176,6 +200,86 @@ public class RagProperties {
 
         public void setMinQueryLength(int minQueryLength) {
             this.minQueryLength = minQueryLength;
+        }
+    }
+
+    /** P1-0b：关键词通道 + RRF 融合参数。 */
+    public static class Hybrid {
+
+        private boolean enabled = false;
+
+        /** 关键词通道自身上限（融合前）；与向量 topK 解耦，避免 ILIKE 扫全表过大。 */
+        private int lexicalTopK = 20;
+
+        /** RRF 平滑常数 k（常见取 60）。 */
+        private int rrfK = 60;
+
+        public boolean isEnabled() {
+            return enabled;
+        }
+
+        public void setEnabled(boolean enabled) {
+            this.enabled = enabled;
+        }
+
+        public int getLexicalTopK() {
+            return lexicalTopK;
+        }
+
+        public void setLexicalTopK(int lexicalTopK) {
+            this.lexicalTopK = lexicalTopK;
+        }
+
+        public int getRrfK() {
+            return rrfK;
+        }
+
+        public void setRrfK(int rrfK) {
+            this.rrfK = rrfK;
+        }
+    }
+
+    /** P1-0b：rerank 开关与超时；供应商接入前保持 enabled=false 或 outcome=skipped。 */
+    public static class Rerank {
+
+        private boolean enabled = false;
+
+        private int timeoutMs = 800;
+
+        private int maxCandidates = 20;
+
+        private boolean allowExternal = false;
+
+        public boolean isEnabled() {
+            return enabled;
+        }
+
+        public void setEnabled(boolean enabled) {
+            this.enabled = enabled;
+        }
+
+        public int getTimeoutMs() {
+            return timeoutMs;
+        }
+
+        public void setTimeoutMs(int timeoutMs) {
+            this.timeoutMs = timeoutMs;
+        }
+
+        public int getMaxCandidates() {
+            return maxCandidates;
+        }
+
+        public void setMaxCandidates(int maxCandidates) {
+            this.maxCandidates = maxCandidates;
+        }
+
+        public boolean isAllowExternal() {
+            return allowExternal;
+        }
+
+        public void setAllowExternal(boolean allowExternal) {
+            this.allowExternal = allowExternal;
         }
     }
 }

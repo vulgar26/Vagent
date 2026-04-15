@@ -6,6 +6,7 @@ import com.vagent.chat.rag.EmptyHitsBehavior;
 import com.vagent.chat.rag.RagProperties;
 import com.vagent.conversation.ConversationService;
 import com.vagent.kb.KnowledgeRetrieveService;
+import com.vagent.kb.RagRetrieveResult;
 import com.vagent.kb.dto.RetrieveHit;
 import com.vagent.llm.LlmChatRequest;
 import com.vagent.llm.LlmMessage;
@@ -147,6 +148,7 @@ public class RagStreamChatService {
         }
 
         List<RetrieveHit> hits;
+        RagRetrieveResult retrieveTrace = null;
         String systemText;
         String toolMetaName = null;
         boolean toolUsed = false;
@@ -167,7 +169,8 @@ public class RagStreamChatService {
                 toolError = out.error();
             }
 
-            hits = knowledgeRetrieveService.searchForRag(userId, rewrite.retrievalQuery(), ragProperties);
+            retrieveTrace = knowledgeRetrieveService.searchForRag(userId, rewrite.retrievalQuery(), ragProperties);
+            hits = retrieveTrace.hits();
             if (branch == ChatBranch.RAG
                     && hits.isEmpty()
                     && ragProperties.getEmptyHitsBehavior() == EmptyHitsBehavior.NO_LLM) {
@@ -194,6 +197,7 @@ public class RagStreamChatService {
         final String toolNameFinal = toolMetaName;
         final String toolOutcomeFinal = toolOutcome;
         final String toolErrorFinal = toolError;
+        final RagRetrieveResult retrieveTraceFinal = retrieveTrace;
         llmStreamExecutor.execute(
                 () ->
                         runAsyncStream(
@@ -207,7 +211,8 @@ public class RagStreamChatService {
                                 toolUsedFinal,
                                 toolNameFinal,
                                 toolOutcomeFinal,
-                                toolErrorFinal));
+                                toolErrorFinal,
+                                retrieveTraceFinal));
         return emitter;
     }
 
@@ -222,9 +227,10 @@ public class RagStreamChatService {
             boolean toolUsed,
             String toolName,
             String toolOutcome,
-            String toolError) {
+            String toolError,
+            RagRetrieveResult retrieveTrace) {
         try {
-            sendMeta(emitter, taskId, hitCount, branch, toolUsed, toolName, toolOutcome, toolError);
+            sendMeta(emitter, taskId, hitCount, branch, toolUsed, toolName, toolOutcome, toolError, retrieveTrace);
             StringBuilder assistantBuffer = new StringBuilder();
             llmSseStreamingBridge.streamChatToSse(
                     emitter,
@@ -272,7 +278,7 @@ public class RagStreamChatService {
             String branchName,
             int hitCount) {
         try {
-            sendMeta(emitter, taskId, hitCount, branchName, false, null, null, null);
+            sendMeta(emitter, taskId, hitCount, branchName, false, null, null, null, null);
             if (taskRegistry.isCancelled(taskId)) {
                 sendEvent(emitter, Map.of("type", "cancelled"));
                 emitter.complete();
@@ -295,13 +301,17 @@ public class RagStreamChatService {
             boolean toolUsed,
             String toolName,
             String toolOutcome,
-            String toolError)
+            String toolError,
+            RagRetrieveResult retrieveTrace)
             throws IOException {
         Map<String, Object> meta = new LinkedHashMap<>();
         meta.put("type", "meta");
         meta.put("taskId", taskId);
         meta.put("hitCount", hitCount);
         meta.put("branch", branch);
+        if (retrieveTrace != null) {
+            retrieveTrace.putRetrievalTrace(meta);
+        }
         meta.put("toolUsed", toolUsed);
         if (toolUsed && toolName != null && !toolName.isBlank()) {
             meta.put("toolName", toolName);

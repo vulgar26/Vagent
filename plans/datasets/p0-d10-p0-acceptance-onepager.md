@@ -46,8 +46,14 @@
 
 ## 4. 建议的 P0 后动作（指针）
 
-- `plans/leadership-execution.md` **§10**：SSE 与 eval 门控单一事实来源（P1-0），建议组长在 P0 收口后勾选并指定 **B（Vagent）** owner。  
-- 双 target 全量绿：**同一 dataset v0.2** 上分别跑 Vagent / travel-ai，再出一期 **compare** 与日报。
+- **【强制执行单】** `plans/p0-plus-execution.md`：P0-A 收口后进入 **P0+**（契约清零、UNKNOWN 收敛、题集与能力对齐、compare/分桶运营）的 **门禁、冲刺划分、必交证据、偷工减料拒收条款**；项目组 **不得以「未安排」为由跳过**。  
+- `plans/leadership-execution.md` **§10**：SSE 与 eval 门控单一事实来源（P1-0），建议组长在 **P0+ 出口** 后勾选并指定 **B（Vagent）** owner。  
+- 双 target 全量绿：**同一 dataset v0.2** 上分别跑 Vagent / travel-ai，再出一期 **compare** 与日报（细节见 `p0-plus-execution.md` §8）。
+
+### 4.1 评测口限定范围（补充说明）
+
+- 本轮为提升 P0+ 回归稳定性，在 **`POST /api/v1/eval/chat`** 增加检索前安全/拒答门控（`EvalChatSafetyGate`，开关：`vagent.eval.api.safety-rules-enabled`），并在短路时写入 `meta.eval_safety_rule_id` 便于分桶统计。
+- **范围管控**：该门控目前 **仅限评测口**；主线对话链路的复用/收敛，按 P0+ 出口后的「共享门控（单一事实来源）」任务执行，避免两套逻辑长期分叉。
 
 ---
 

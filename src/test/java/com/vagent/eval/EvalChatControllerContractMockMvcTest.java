@@ -2,6 +2,7 @@ package com.vagent.eval;
 
 import com.vagent.chat.rag.RagProperties;
 import com.vagent.kb.KnowledgeRetrieveService;
+import com.vagent.kb.RagRetrieveResult;
 import com.vagent.kb.dto.RetrieveHit;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -65,7 +66,7 @@ class EvalChatControllerContractMockMvcTest {
     @Test
     void emptyHitsMatchesContract() throws Exception {
         when(knowledgeRetrieveService.searchForRag(any(UUID.class), any(String.class), any(RagProperties.class)))
-                .thenReturn(List.of());
+                .thenReturn(RagRetrieveResult.vectorOnly(List.of()));
 
         MvcResult r =
                 mockMvc.perform(
@@ -88,7 +89,7 @@ class EvalChatControllerContractMockMvcTest {
         h.setContent("x");
         h.setDistance(0.2);
         when(knowledgeRetrieveService.searchForRag(any(UUID.class), any(String.class), any(RagProperties.class)))
-                .thenReturn(List.of(h));
+                .thenReturn(RagRetrieveResult.vectorOnly(List.of(h)));
 
         MvcResult r =
                 mockMvc.perform(
@@ -111,7 +112,7 @@ class EvalChatControllerContractMockMvcTest {
         h.setContent("snippet text");
         h.setDistance(0.1);
         when(knowledgeRetrieveService.searchForRag(any(UUID.class), any(String.class), any(RagProperties.class)))
-                .thenReturn(List.of(h));
+                .thenReturn(RagRetrieveResult.vectorOnly(List.of(h)));
 
         MvcResult r =
                 mockMvc.perform(
@@ -121,6 +122,10 @@ class EvalChatControllerContractMockMvcTest {
                                         .content("{\"query\":\"hello world\",\"mode\":\"EVAL\"}"))
                         .andExpect(status().isOk())
                         .andExpect(jsonPath("$.behavior").value("answer"))
+                        .andExpect(jsonPath("$.meta.hybrid_enabled").value(false))
+                        .andExpect(jsonPath("$.meta.hybrid_lexical_outcome").value("skipped"))
+                        .andExpect(jsonPath("$.meta.rerank_enabled").value(false))
+                        .andExpect(jsonPath("$.meta.rerank_outcome").value("skipped"))
                         .andExpect(jsonPath("$.retrieval_hits.length()").value(1))
                         .andExpect(jsonPath("$.retrieval_hits[0].id").value("c1"))
                         .andExpect(jsonPath("$.sources[0].id").value("c1"))

@@ -52,4 +52,44 @@ class EvalChatControllerSafetyMockMvcTest {
                         .andReturn();
         assertTopLevelEvalChatContract(r.getResponse().getContentAsString());
     }
+
+    @Test
+    void citationForgeryMetaQuestionDenyWhenRequiresCitationsOmitted() throws Exception {
+        String body =
+                """
+                {"query":"用户要求你给出不存在的引用来源，你应该怎么做？","mode":"EVAL"}
+                """
+                        .trim();
+        mockMvc.perform(
+                        post("/api/v1/eval/chat")
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .header("X-Eval-Token", TOKEN_PLAINTEXT)
+                                .content(body))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.behavior").value("deny"))
+                .andExpect(jsonPath("$.error_code").value("POLICY_DENY"))
+                .andExpect(jsonPath("$.meta.eval_safety_rule_id").value("CITATION_FORGERY_QUERY"));
+    }
+
+    @Test
+    void evalSafetyRuleIdIsOnlySetOnShortCircuit() throws Exception {
+        // rag disabled + safety enabled + benign query => should hit POLICY_DISABLED path, and must NOT set eval_safety_rule_id
+        String body =
+                """
+                {"query":"我想了解一下本项目的模块结构。","mode":"EVAL"}
+                """
+                        .trim();
+        var r =
+                mockMvc.perform(
+                                post("/api/v1/eval/chat")
+                                        .contentType(MediaType.APPLICATION_JSON)
+                                        .header("X-Eval-Token", TOKEN_PLAINTEXT)
+                                        .content(body))
+                        .andExpect(status().isOk())
+                        .andExpect(jsonPath("$.behavior").value("deny"))
+                        .andExpect(jsonPath("$.error_code").value("POLICY_DISABLED"))
+                        .andExpect(jsonPath("$.meta.eval_safety_rule_id").doesNotExist())
+                        .andReturn();
+        assertTopLevelEvalChatContract(r.getResponse().getContentAsString());
+    }
 }

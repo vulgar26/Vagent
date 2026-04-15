@@ -44,4 +44,5 @@ src/main/resources/application-local.yml
 
 ### Eval export artifacts (regenerate via export-eval-run-failures.ps1) ###
 plans/datasets/run_failures.csv
+plans/datasets/artifacts/
 eval_run_*.json

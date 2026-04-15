@@ -2,6 +2,7 @@ package com.vagent.eval;
 
 import com.vagent.chat.rag.RagProperties;
 import com.vagent.kb.KnowledgeRetrieveService;
+import com.vagent.kb.RagRetrieveResult;
 import com.vagent.kb.dto.RetrieveHit;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -52,7 +53,7 @@ class EvalChatControllerDistanceLowConfidenceMockMvcTest {
         h.setContent("x");
         h.setDistance(0.95);
         when(knowledgeRetrieveService.searchForRag(any(UUID.class), any(String.class), any(RagProperties.class)))
-                .thenReturn(List.of(h));
+                .thenReturn(RagRetrieveResult.vectorOnly(List.of(h)));
 
         var r =
                 mockMvc.perform(

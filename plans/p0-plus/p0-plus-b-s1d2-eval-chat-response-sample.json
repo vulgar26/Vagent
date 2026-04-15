@@ -1,0 +1,20 @@
+{
+  "answer": "OK",
+  "behavior": "answer",
+  "latency_ms": 12,
+  "capabilities": {
+    "retrieval": { "supported": true, "score": null, "outcome": null },
+    "tools": { "supported": false, "score": null, "outcome": null },
+    "streaming": { "ttft": false },
+    "guardrails": { "quote_only": false, "evidence_map": false, "reflection": false }
+  },
+  "meta": { "mode": "EVAL" },
+  "sources": [
+    { "id": "chunk-uuid-1", "title": "doc-a", "snippet": "..." }
+  ],
+  "retrieval_hits": [
+    { "id": "chunk-uuid-1", "score": 0.82 },
+    { "id": "chunk-uuid-2" }
+  ],
+  "error_code": null
+}

@@ -18,6 +18,7 @@ import java.util.UUID;
  * U4：Micrometer 计时器 {@code vagent.rag.retrieve}。
  * <p>
  * U5：对话流使用 {@link #searchForRag}，可合并第二路全表召回；{@link #search} 仅用于 API，仅主路。
+ * <p>P1-0b：{@link #searchForRag} 返回 {@link RagRetrieveResult}，包含可选 hybrid（向量 + 关键词 RRF）与 rerank 占位归因（默认关闭）。</p>
  */
 @Service
 public class KnowledgeRetrieveService {
@@ -57,7 +58,7 @@ public class KnowledgeRetrieveService {
      * RAG 流式对话：先主路，再按配置决定是否合并第二路全局向量、去重截断。
      */
     @Transactional(readOnly = true)
-    public List<RetrieveHit> searchForRag(UUID userId, String query, RagProperties ragProps) {
+    public RagRetrieveResult searchForRag(UUID userId, String query, RagProperties ragProps) {
         Timer.Sample sample = Timer.start(meterRegistry);
         try {
             int topK = ragProps.getTopK();
@@ -68,18 +69,56 @@ public class KnowledgeRetrieveService {
             for (RetrieveHit h : primary) {
                 h.setSource("primary");
             }
+
+            RagProperties.Hybrid hy = ragProps.getHybrid();
+            boolean hybridOn = hy != null && hy.isEnabled();
+            String lexicalOutcome = "skipped";
+            List<RetrieveHit> fused = primary;
+            if (hybridOn) {
+                String pattern = LexicalPatternBuilder.buildContainsPattern(query, 300);
+                if (pattern == null) {
+                    lexicalOutcome = "skipped";
+                } else {
+                    try {
+                        int lexK = Math.max(1, hy.getLexicalTopK());
+                        List<RetrieveHit> lex = kbChunkMapper.searchLexical(uid, pattern, lexK);
+                        for (RetrieveHit h : lex) {
+                            h.setSource("lexical");
+                        }
+                        lexicalOutcome = "ok";
+                        fused = RrfHitFusion.fuse(primary, lex, topK, hy.getRrfK());
+                    } catch (RuntimeException e) {
+                        lexicalOutcome = "error";
+                        fused = primary;
+                    }
+                }
+            }
+
             RagProperties.SecondPath sp = ragProps.getSecondPath();
-            if (sp == null || !sp.isEnabled() || !sp.isCrossTenant()) {
-                return primary;
+            List<RetrieveHit> afterSecond = fused;
+            if (sp != null && sp.isEnabled() && sp.isCrossTenant()) {
+                if (shouldTriggerSecondPath(fused, query, sp)) {
+                    List<RetrieveHit> global = kbChunkMapper.searchNearestGlobal(qv, sp.getTopK());
+                    for (RetrieveHit h : global) {
+                        h.setSource("global");
+                    }
+                    afterSecond = RetrieveHitMerge.mergeAndTakeTop(fused, global, topK);
+                }
             }
-            if (!shouldTriggerSecondPath(primary, query, sp)) {
-                return primary;
+
+            RagProperties.Rerank rr = ragProps.getRerank();
+            boolean rerankOn = rr != null && rr.isEnabled();
+            String rerankOutcome = "skipped";
+            Long rerankLatencyMs = null;
+            List<RetrieveHit> finalHits = afterSecond;
+            if (rerankOn) {
+                long t0 = System.nanoTime();
+                // 供应商 rerank 尚未接入：显式 skipped，主路径不失败（对齐 vagent-upgrade 降级矩阵）
+                rerankOutcome = "skipped";
+                rerankLatencyMs = (System.nanoTime() - t0) / 1_000_000L;
             }
-            List<RetrieveHit> global = kbChunkMapper.searchNearestGlobal(qv, sp.getTopK());
-            for (RetrieveHit h : global) {
-                h.setSource("global");
-            }
-            return RetrieveHitMerge.mergeAndTakeTop(primary, global, topK);
+
+            return new RagRetrieveResult(finalHits, hybridOn, lexicalOutcome, rerankOn, rerankOutcome, rerankLatencyMs);
         } finally {
             sample.stop(Timer.builder("vagent.rag.retrieve").register(meterRegistry));
         }

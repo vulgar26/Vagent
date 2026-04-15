@@ -29,6 +29,17 @@
 #       enabled: true
 #       # 调小可在低置信分支复现 GUARDRAIL_TRIGGERED（仅本地演示）
 #       max-answer-chars-when-low-confidence: 500
+#   # P1-0b：混合检索 + rerank（默认关；见 plans/vagent-upgrade.md）
+#   rag:
+#     hybrid:
+#       enabled: true
+#       lexical-top-k: 20
+#       rrf-k: 60
+#     rerank:
+#       enabled: false
+#       timeout-ms: 800
+#       max-candidates: 20
+#       allow-external: false
 vagent:
   security:
     jwt:
