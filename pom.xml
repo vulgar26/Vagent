@@ -125,7 +125,8 @@
                 <artifactId>maven-surefire-plugin</artifactId>
                 <configuration>
                     <!-- JDK 21+ 部分环境 Mockito/ByteBuddy 需允许动态 agent，否则集成测试报错 -->
-                    <argLine>-XX:+EnableDynamicAgentLoading</argLine>
+                    <!-- 限制测试 JVM 资源占用：避免 Windows 下偶发 native OOM 导致 fork 崩溃 -->
+                    <argLine>-XX:+EnableDynamicAgentLoading -Xms256m -Xmx768m -XX:CICompilerCount=2</argLine>
                     <!-- M2：Testcontainers 拉取 pgvector 镜像较慢；单独运行见 README -->
                     <excludes>
                         <exclude>**/M2KnowledgeVectorIntegrationTest.java</exclude>

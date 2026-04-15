@@ -9,8 +9,10 @@ import io.micrometer.core.instrument.Timer;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -75,6 +77,7 @@ public class KnowledgeRetrieveService {
             boolean hybridOn = hy != null && hy.isEnabled();
             String lexicalOutcome = "skipped";
             String lexicalModeUsed = "skipped";
+            List<RetrieveHit> lexicalHits = List.of();
             List<RetrieveHit> fused = primary;
             if (hybridOn && hy != null) {
                 String mode = hy.getLexicalMode() == null ? "ilike" : hy.getLexicalMode().trim().toLowerCase(Locale.ROOT);
@@ -91,6 +94,7 @@ public class KnowledgeRetrieveService {
                             for (RetrieveHit h : lex) {
                                 h.setSource("lexical");
                             }
+                            lexicalHits = lex;
                             lexicalOutcome = "ok";
                             fused = RrfHitFusion.fuse(primary, lex, topK, hy.getRrfK());
                         } catch (RuntimeException e) {
@@ -110,6 +114,7 @@ public class KnowledgeRetrieveService {
                             for (RetrieveHit h : lex) {
                                 h.setSource("lexical");
                             }
+                            lexicalHits = lex;
                             lexicalOutcome = "ok";
                             fused = RrfHitFusion.fuse(primary, lex, topK, hy.getRrfK());
                         } catch (RuntimeException e) {
@@ -144,8 +149,32 @@ public class KnowledgeRetrieveService {
                 rerankLatencyMs = (System.nanoTime() - t0) / 1_000_000L;
             }
 
+            Integer primaryChunkIdCount = null;
+            Integer lexicalChunkIdCount = null;
+            Integer fusedChunkIdCount = null;
+            Double chunkIdDeltaRate = null;
+            if (hybridOn) {
+                Set<String> p = chunkIdSet(primary);
+                Set<String> l = chunkIdSet(lexicalHits);
+                Set<String> f = chunkIdSet(fused);
+                primaryChunkIdCount = p.size();
+                lexicalChunkIdCount = l.size();
+                fusedChunkIdCount = f.size();
+                chunkIdDeltaRate = jaccardDistance(p, f);
+            }
+
             return new RagRetrieveResult(
-                    finalHits, hybridOn, lexicalOutcome, lexicalModeUsed, rerankOn, rerankOutcome, rerankLatencyMs);
+                    finalHits,
+                    hybridOn,
+                    lexicalOutcome,
+                    lexicalModeUsed,
+                    primaryChunkIdCount,
+                    lexicalChunkIdCount,
+                    fusedChunkIdCount,
+                    chunkIdDeltaRate,
+                    rerankOn,
+                    rerankOutcome,
+                    rerankLatencyMs);
         } finally {
             sample.stop(Timer.builder("vagent.rag.retrieve").register(meterRegistry));
         }
@@ -164,5 +193,45 @@ public class KnowledgeRetrieveService {
             return true;
         }
         return false;
+    }
+
+    private static Set<String> chunkIdSet(List<RetrieveHit> hits) {
+        if (hits == null || hits.isEmpty()) {
+            return Set.of();
+        }
+        HashSet<String> out = new HashSet<>(hits.size() * 2);
+        for (RetrieveHit h : hits) {
+            if (h == null) {
+                continue;
+            }
+            String id = h.getChunkId();
+            if (id != null && !id.isBlank()) {
+                out.add(id);
+            }
+        }
+        return out;
+    }
+
+    /** Jaccard distance：1 - |A∩B|/|A∪B|，空集 vs 空集 视为 0。 */
+    private static double jaccardDistance(Set<String> a, Set<String> b) {
+        if ((a == null || a.isEmpty()) && (b == null || b.isEmpty())) {
+            return 0.0;
+        }
+        Set<String> aa = a == null ? Set.of() : a;
+        Set<String> bb = b == null ? Set.of() : b;
+        int intersection = 0;
+        // iterate smaller set
+        Set<String> small = aa.size() <= bb.size() ? aa : bb;
+        Set<String> large = aa.size() <= bb.size() ? bb : aa;
+        for (String x : small) {
+            if (large.contains(x)) {
+                intersection++;
+            }
+        }
+        int union = aa.size() + bb.size() - intersection;
+        if (union <= 0) {
+            return 0.0;
+        }
+        return 1.0 - ((double) intersection / (double) union);
     }
 }

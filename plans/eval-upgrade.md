@@ -567,7 +567,12 @@ eval 对失败统一归因（用于报告与对比）：
 #### 2) 向量距离分布（Top1/TopK 分桶）
 
 - `retrieval_hits[*].distance`：对 Top1 / TopK 做分桶与分位（P50/P90/P95）
-- （推荐）`meta.retrieve_top1_distance`、`meta.retrieve_topk_distance_p50/p95`（减少 eval 侧重复计算）
+- （推荐业务侧直接返回，减少 eval 侧重复计算；Vagent 已实现）：
+  - `meta.retrieve_top1_distance`
+  - `meta.retrieve_top1_distance_bucket`
+  - `meta.retrieve_topk_distance_p50`
+  - `meta.retrieve_topk_distance_p95`
+  - `meta.retrieve_topk_distance_buckets`（map：bucket→count）
 
 #### 3) Hybrid 词法通道与降级归因（Vagent 已实现）
 
@@ -576,6 +581,11 @@ Vagent 的 `POST /api/v1/eval/chat` meta 已提供：
 - `meta.hybrid_enabled`：是否启用 hybrid
 - `meta.hybrid_lexical_outcome`：`skipped|ok|error`（词法通道是否参与；异常会降级回 vector-only）
 - `meta.hybrid_lexical_mode`：`skipped|ilike|tsvector`（词法实现口径，便于归因）
+- （可选增强；Vagent 已实现）融合前后 chunk_id 集合变化：
+  - `meta.hybrid_primary_chunk_id_count`
+  - `meta.hybrid_lexical_chunk_id_count`
+  - `meta.hybrid_fused_chunk_id_count`
+  - `meta.hybrid_chunk_id_delta_rate`
 
 #### 4) Rerank 归因（Vagent 已实现占位）
 
