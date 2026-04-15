@@ -47,6 +47,22 @@
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-validation</artifactId>
         </dependency>
+        <!-- BM25（第二检索系统）：Lucene 内嵌全文检索（用于与 PG tsvector 做可归因对比） -->
+        <dependency>
+            <groupId>org.apache.lucene</groupId>
+            <artifactId>lucene-core</artifactId>
+            <version>9.12.1</version>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.lucene</groupId>
+            <artifactId>lucene-analysis-common</artifactId>
+            <version>9.12.1</version>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.lucene</groupId>
+            <artifactId>lucene-queryparser</artifactId>
+            <version>9.12.1</version>
+        </dependency>
         <!-- 业务库 + pgvector（M2） -->
         <!-- compile：MyBatis TypeHandler 解析 PGvector 需驱动类在编译 classpath -->
         <dependency>
@@ -126,7 +142,9 @@
                 <configuration>
                     <!-- JDK 21+ 部分环境 Mockito/ByteBuddy 需允许动态 agent，否则集成测试报错 -->
                     <!-- 限制测试 JVM 资源占用：避免 Windows 下偶发 native OOM 导致 fork 崩溃 -->
-                    <argLine>-XX:+EnableDynamicAgentLoading -Xms256m -Xmx768m -XX:CICompilerCount=2</argLine>
+                    <argLine>-XX:+EnableDynamicAgentLoading -Xms128m -Xmx512m -XX:CICompilerCount=1 -XX:+UseSerialGC</argLine>
+                    <!-- 本机/CI 资源紧张时避免 fork 出新 JVM -->
+                    <forkCount>0</forkCount>
                     <!-- M2：Testcontainers 拉取 pgvector 镜像较慢；单独运行见 README -->
                     <excludes>
                         <exclude>**/M2KnowledgeVectorIntegrationTest.java</exclude>

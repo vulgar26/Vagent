@@ -209,8 +209,12 @@ public class RagProperties {
         private boolean enabled = false;
 
         /**
-         * 关键词通道实现：{@code ilike}（默认，子串 ILIKE）或 {@code tsvector}（PG 全文检索，需 Flyway V4
-         * {@code content_tsv} 列）。
+         * 关键词通道实现：
+         * <ul>
+         *   <li>{@code ilike}：子串 ILIKE（默认）</li>
+         *   <li>{@code tsvector}：PG 全文检索（需 Flyway V4 {@code content_tsv} 列）</li>
+         *   <li>{@code bm25}：第二检索系统（Lucene BM25；便于与 tsvector 做可归因对比）</li>
+         * </ul>
          */
         private String lexicalMode = "ilike";
 

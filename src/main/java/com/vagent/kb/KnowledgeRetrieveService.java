@@ -6,6 +6,7 @@ import com.vagent.kb.dto.RetrieveHit;
 import com.vagent.user.UserIdFormats;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -29,12 +30,17 @@ public class KnowledgeRetrieveService {
     private final KbChunkMapper kbChunkMapper;
     private final EmbeddingClient embeddingClient;
     private final MeterRegistry meterRegistry;
+    private final ObjectProvider<Bm25LuceneRetrieveService> bm25LuceneRetrieveServiceProvider;
 
     public KnowledgeRetrieveService(
-            KbChunkMapper kbChunkMapper, EmbeddingClient embeddingClient, MeterRegistry meterRegistry) {
+            KbChunkMapper kbChunkMapper,
+            EmbeddingClient embeddingClient,
+            MeterRegistry meterRegistry,
+            ObjectProvider<Bm25LuceneRetrieveService> bm25LuceneRetrieveServiceProvider) {
         this.kbChunkMapper = kbChunkMapper;
         this.embeddingClient = embeddingClient;
         this.meterRegistry = meterRegistry;
+        this.bm25LuceneRetrieveServiceProvider = bm25LuceneRetrieveServiceProvider;
     }
 
     /**
@@ -82,7 +88,31 @@ public class KnowledgeRetrieveService {
             if (hybridOn && hy != null) {
                 String mode = hy.getLexicalMode() == null ? "ilike" : hy.getLexicalMode().trim().toLowerCase(Locale.ROOT);
                 int lexK = Math.max(1, hy.getLexicalTopK());
-                if ("tsvector".equals(mode)) {
+                if ("bm25".equals(mode)) {
+                    String qtext = QueryTextLimiter.trimAndLimit(query, 500);
+                    if (qtext.isEmpty()) {
+                        lexicalOutcome = "skipped";
+                        lexicalModeUsed = "skipped";
+                    } else {
+                        lexicalModeUsed = "bm25";
+                        try {
+                            Bm25LuceneRetrieveService bm25 = bm25LuceneRetrieveServiceProvider.getIfAvailable();
+                            if (bm25 == null) {
+                                throw new IllegalStateException("bm25 service not available");
+                            }
+                            List<RetrieveHit> lex = bm25.search(uid, qtext, lexK);
+                            for (RetrieveHit h : lex) {
+                                h.setSource("lexical");
+                            }
+                            lexicalHits = lex;
+                            lexicalOutcome = "ok";
+                            fused = RrfHitFusion.fuse(primary, lex, topK, hy.getRrfK());
+                        } catch (RuntimeException e) {
+                            lexicalOutcome = "error";
+                            fused = primary;
+                        }
+                    }
+                } else if ("tsvector".equals(mode)) {
                     String qtext = QueryTextLimiter.trimAndLimit(query, 500);
                     if (qtext.isEmpty()) {
                         lexicalOutcome = "skipped";

@@ -99,7 +99,7 @@ vagent:
     # P1-0b：混合检索 + 可选 rerank（默认全关；见 plans/vagent-upgrade.md）
     hybrid:
       enabled: false
-      # ilike：子串 ILIKE（默认）；tsvector：PG 全文检索（需 Flyway V4 content_tsv 列）
+      # ilike：子串 ILIKE（默认）；tsvector：PG 全文检索；bm25：第二检索系统（Lucene BM25）
       lexical-mode: ilike
       lexical-top-k: 20
       rrf-k: 60

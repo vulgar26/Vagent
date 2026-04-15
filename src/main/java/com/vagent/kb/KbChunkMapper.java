@@ -1,6 +1,7 @@
 package com.vagent.kb;
 
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
+import com.vagent.kb.dto.KbChunkIndexRow;
 import com.vagent.kb.dto.RetrieveHit;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
@@ -77,4 +78,16 @@ public interface KbChunkMapper extends BaseMapper<KbChunk> {
             """)
     List<RetrieveHit> searchLexicalTsvector(
             @Param("userId") String userId, @Param("queryText") String queryText, @Param("topK") int topK);
+
+    /**
+     * BM25 索引构建：按用户列出全部 chunk（仅索引最小字段，避免把 embedding 取回）。
+     */
+    @Select("""
+            SELECT c.id AS chunk_id,
+                   c.document_id AS document_id,
+                   c.content AS content
+            FROM kb_chunks c
+            WHERE c.user_id = CAST(#{userId} AS uuid)
+            """)
+    List<KbChunkIndexRow> listChunksForIndex(@Param("userId") String userId);
 }
