@@ -129,6 +129,7 @@
                     <!-- M2：Testcontainers 拉取 pgvector 镜像较慢；单独运行见 README -->
                     <excludes>
                         <exclude>**/M2KnowledgeVectorIntegrationTest.java</exclude>
+                        <exclude>**/HybridTsvectorRetrieveIntegrationTest.java</exclude>
                     </excludes>
                 </configuration>
             </plugin>

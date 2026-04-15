@@ -124,6 +124,7 @@ class EvalChatControllerContractMockMvcTest {
                         .andExpect(jsonPath("$.behavior").value("answer"))
                         .andExpect(jsonPath("$.meta.hybrid_enabled").value(false))
                         .andExpect(jsonPath("$.meta.hybrid_lexical_outcome").value("skipped"))
+                        .andExpect(jsonPath("$.meta.hybrid_lexical_mode").value("skipped"))
                         .andExpect(jsonPath("$.meta.rerank_enabled").value(false))
                         .andExpect(jsonPath("$.meta.rerank_outcome").value("skipped"))
                         .andExpect(jsonPath("$.retrieval_hits.length()").value(1))

@@ -10,6 +10,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.Locale;
 import java.util.UUID;
 
 /**
@@ -73,23 +74,48 @@ public class KnowledgeRetrieveService {
             RagProperties.Hybrid hy = ragProps.getHybrid();
             boolean hybridOn = hy != null && hy.isEnabled();
             String lexicalOutcome = "skipped";
+            String lexicalModeUsed = "skipped";
             List<RetrieveHit> fused = primary;
-            if (hybridOn) {
-                String pattern = LexicalPatternBuilder.buildContainsPattern(query, 300);
-                if (pattern == null) {
-                    lexicalOutcome = "skipped";
-                } else {
-                    try {
-                        int lexK = Math.max(1, hy.getLexicalTopK());
-                        List<RetrieveHit> lex = kbChunkMapper.searchLexical(uid, pattern, lexK);
-                        for (RetrieveHit h : lex) {
-                            h.setSource("lexical");
+            if (hybridOn && hy != null) {
+                String mode = hy.getLexicalMode() == null ? "ilike" : hy.getLexicalMode().trim().toLowerCase(Locale.ROOT);
+                int lexK = Math.max(1, hy.getLexicalTopK());
+                if ("tsvector".equals(mode)) {
+                    String qtext = QueryTextLimiter.trimAndLimit(query, 500);
+                    if (qtext.isEmpty()) {
+                        lexicalOutcome = "skipped";
+                        lexicalModeUsed = "skipped";
+                    } else {
+                        lexicalModeUsed = "tsvector";
+                        try {
+                            List<RetrieveHit> lex = kbChunkMapper.searchLexicalTsvector(uid, qtext, lexK);
+                            for (RetrieveHit h : lex) {
+                                h.setSource("lexical");
+                            }
+                            lexicalOutcome = "ok";
+                            fused = RrfHitFusion.fuse(primary, lex, topK, hy.getRrfK());
+                        } catch (RuntimeException e) {
+                            lexicalOutcome = "error";
+                            fused = primary;
                         }
-                        lexicalOutcome = "ok";
-                        fused = RrfHitFusion.fuse(primary, lex, topK, hy.getRrfK());
-                    } catch (RuntimeException e) {
-                        lexicalOutcome = "error";
-                        fused = primary;
+                    }
+                } else {
+                    String pattern = LexicalPatternBuilder.buildContainsPattern(query, 300);
+                    if (pattern == null) {
+                        lexicalOutcome = "skipped";
+                        lexicalModeUsed = "skipped";
+                    } else {
+                        lexicalModeUsed = "ilike";
+                        try {
+                            List<RetrieveHit> lex = kbChunkMapper.searchLexical(uid, pattern, lexK);
+                            for (RetrieveHit h : lex) {
+                                h.setSource("lexical");
+                            }
+                            lexicalOutcome = "ok";
+                            fused = RrfHitFusion.fuse(primary, lex, topK, hy.getRrfK());
+                        } catch (RuntimeException e) {
+                            lexicalOutcome = "error";
+                            fused = primary;
+                        }
                     }
                 }
             }
@@ -118,7 +144,8 @@ public class KnowledgeRetrieveService {
                 rerankLatencyMs = (System.nanoTime() - t0) / 1_000_000L;
             }
 
-            return new RagRetrieveResult(finalHits, hybridOn, lexicalOutcome, rerankOn, rerankOutcome, rerankLatencyMs);
+            return new RagRetrieveResult(
+                    finalHits, hybridOn, lexicalOutcome, lexicalModeUsed, rerankOn, rerankOutcome, rerankLatencyMs);
         } finally {
             sample.stop(Timer.builder("vagent.rag.retrieve").register(meterRegistry));
         }

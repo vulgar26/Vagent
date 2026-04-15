@@ -60,4 +60,21 @@ public interface KbChunkMapper extends BaseMapper<KbChunk> {
             """)
     List<RetrieveHit> searchLexical(
             @Param("userId") String userId, @Param("pattern") String pattern, @Param("topK") int topK);
+
+    /**
+     * P1-0b+：全文检索（{@code content_tsv} @@ plainto_tsquery）。distance 为伪距离：越小表示 ts_rank_cd 越大越相关。
+     */
+    @Select("""
+            SELECT c.id AS chunk_id,
+                   c.document_id AS document_id,
+                   c.content AS content,
+                   (1.0 / (1.0 + ts_rank_cd(c.content_tsv, plainto_tsquery('simple', CAST(#{queryText} AS text))))) AS distance
+            FROM kb_chunks c
+            WHERE c.user_id = CAST(#{userId} AS uuid)
+              AND c.content_tsv @@ plainto_tsquery('simple', CAST(#{queryText} AS text))
+            ORDER BY distance ASC
+            LIMIT #{topK}
+            """)
+    List<RetrieveHit> searchLexicalTsvector(
+            @Param("userId") String userId, @Param("queryText") String queryText, @Param("topK") int topK);
 }

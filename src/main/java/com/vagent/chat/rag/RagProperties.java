@@ -208,6 +208,12 @@ public class RagProperties {
 
         private boolean enabled = false;
 
+        /**
+         * 关键词通道实现：{@code ilike}（默认，子串 ILIKE）或 {@code tsvector}（PG 全文检索，需 Flyway V4
+         * {@code content_tsv} 列）。
+         */
+        private String lexicalMode = "ilike";
+
         /** 关键词通道自身上限（融合前）；与向量 topK 解耦，避免 ILIKE 扫全表过大。 */
         private int lexicalTopK = 20;
 
@@ -220,6 +226,14 @@ public class RagProperties {
 
         public void setEnabled(boolean enabled) {
             this.enabled = enabled;
+        }
+
+        public String getLexicalMode() {
+            return lexicalMode;
+        }
+
+        public void setLexicalMode(String lexicalMode) {
+            this.lexicalMode = lexicalMode;
         }
 
         public int getLexicalTopK() {

@@ -20,3 +20,10 @@ CREATE TABLE IF NOT EXISTS kb_chunks (
 );
 
 CREATE INDEX IF NOT EXISTS idx_kb_chunks_user_id ON kb_chunks (user_id);
+
+-- 全文检索列（与 Flyway V4 一致）；已有表时用 ALTER 补齐
+ALTER TABLE kb_chunks
+    ADD COLUMN IF NOT EXISTS content_tsv tsvector
+        GENERATED ALWAYS AS (to_tsvector('simple', coalesce(content, ''))) STORED;
+
+CREATE INDEX IF NOT EXISTS idx_kb_chunks_content_tsv ON kb_chunks USING gin (content_tsv);

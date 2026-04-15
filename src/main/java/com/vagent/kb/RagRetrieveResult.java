@@ -14,6 +14,8 @@ public final class RagRetrieveResult {
     private final List<RetrieveHit> hits;
     private final boolean hybridEnabled;
     private final String hybridLexicalOutcome;
+    /** {@code skipped} | {@code ilike} | {@code tsvector}：关键词通道实现口径。 */
+    private final String hybridLexicalMode;
     private final boolean rerankEnabled;
     private final String rerankOutcome;
     private final Long rerankLatencyMs;
@@ -22,12 +24,14 @@ public final class RagRetrieveResult {
             List<RetrieveHit> hits,
             boolean hybridEnabled,
             String hybridLexicalOutcome,
+            String hybridLexicalMode,
             boolean rerankEnabled,
             String rerankOutcome,
             Long rerankLatencyMs) {
         this.hits = hits == null ? List.of() : List.copyOf(hits);
         this.hybridEnabled = hybridEnabled;
         this.hybridLexicalOutcome = hybridLexicalOutcome;
+        this.hybridLexicalMode = hybridLexicalMode == null ? "skipped" : hybridLexicalMode;
         this.rerankEnabled = rerankEnabled;
         this.rerankOutcome = rerankOutcome;
         this.rerankLatencyMs = rerankLatencyMs;
@@ -35,7 +39,7 @@ public final class RagRetrieveResult {
 
     /** 纯向量路径（无 hybrid、无 rerank），用于测试 mock 与兼容旧行为。 */
     public static RagRetrieveResult vectorOnly(List<RetrieveHit> hits) {
-        return new RagRetrieveResult(hits, false, "skipped", false, "skipped", null);
+        return new RagRetrieveResult(hits, false, "skipped", "skipped", false, "skipped", null);
     }
 
     public List<RetrieveHit> hits() {
@@ -48,6 +52,10 @@ public final class RagRetrieveResult {
 
     public String hybridLexicalOutcome() {
         return hybridLexicalOutcome;
+    }
+
+    public String hybridLexicalMode() {
+        return hybridLexicalMode;
     }
 
     public boolean rerankEnabled() {
@@ -66,6 +74,7 @@ public final class RagRetrieveResult {
     public void putRetrievalTrace(Map<String, Object> meta) {
         meta.put("hybrid_enabled", hybridEnabled);
         meta.put("hybrid_lexical_outcome", hybridLexicalOutcome);
+        meta.put("hybrid_lexical_mode", hybridLexicalMode);
         meta.put("rerank_enabled", rerankEnabled);
         meta.put("rerank_outcome", rerankOutcome);
         if (rerankLatencyMs != null) {

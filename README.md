@@ -179,9 +179,10 @@ ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO vagent;
 
 ```bash
 ./mvnw test -Dtest=M2KnowledgeVectorIntegrationTest
+./mvnw test -Dtest=HybridTsvectorRetrieveIntegrationTest
 ```
 
-（默认 Surefire 已排除该类，避免首次拉取 `pgvector/pgvector` 镜像耗时过长。）
+（默认 Surefire 已排除上述类，避免首次拉取 `pgvector/pgvector` 镜像耗时过长。）
 
 补充单测：**`LlmStreamTaskRegistryTest`**、**`LlmSseStreamingBridgeTest`**（取消与 done 回调语义）；编排改写/意图见 **`com.vagent.orchestration`** 包内测试。
 
