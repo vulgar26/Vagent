@@ -1,12 +1,40 @@
 param(
-  [Parameter(Mandatory = $true)][string]$EvalBase,
-  [Parameter(Mandatory = $true)][string]$BaseRunId,
-  [Parameter(Mandatory = $true)][string]$CandRunId,
+  # online mode（从 eval 服务拉取）
+  [string]$EvalBase,
+  [string]$BaseRunId,
+  [string]$CandRunId,
+  # offline mode（直接读落盘的 results.json）
+  [Parameter()][string]$BaseResultsPath,
+  [Parameter()][string]$CandResultsPath,
   [int]$Limit = 500,
   [string]$OutDir = "."
 )
 
 $ErrorActionPreference = "Stop"
+
+function Is-NonEmpty([string]$s) {
+  return -not [string]::IsNullOrWhiteSpace($s)
+}
+
+# PowerShell 5.1 在少数环境下可能出现“部分参数名未绑定”的怪异现象；
+# 兜底：从 $args 中抓取 results.json 路径（按出现顺序）。
+if (-not (Is-NonEmpty $BaseResultsPath) -or -not (Is-NonEmpty $CandResultsPath)) {
+  $fileArgs = @()
+  foreach ($a in $args) {
+    if ($a -is [string]) {
+      $s = $a.ToString()
+      if ($s -like "*results.json*") {
+        $fileArgs += $s
+      }
+    }
+  }
+  if (-not (Is-NonEmpty $BaseResultsPath) -and $fileArgs.Count -ge 1) {
+    $BaseResultsPath = $fileArgs[0]
+  }
+  if (-not (Is-NonEmpty $CandResultsPath) -and $fileArgs.Count -ge 2) {
+    $CandResultsPath = $fileArgs[1]
+  }
+}
 
 function Get-RunReport([string]$runId) {
   # 先取 JSON 字符串再 ConvertFrom-Json，避免 Invoke-RestMethod 在某些环境下内存膨胀
@@ -29,6 +57,24 @@ function Get-RunResultsAll([string]$runId) {
   return $all
 }
 
+function Read-ResultsFromFile([string]$path) {
+  if (-not (Test-Path $path)) { throw "results json not found: $path" }
+  $raw = Get-Content -Path $path -Raw -Encoding utf8
+  $obj = $raw | ConvertFrom-Json
+  if ($obj -and $obj.results) { return @($obj.results) }
+  # 兼容“直接是数组”的形态（若未来落盘改格式）
+  if ($obj -is [System.Array]) { return @($obj) }
+  throw "unrecognized results json shape: $path"
+}
+
+function Guess-RunIdFromFile([string]$path) {
+  $name = [System.IO.Path]::GetFileNameWithoutExtension($path)
+  # 期望形态：eval_run_run_<runId>_results
+  if ($name -match "eval_run_run_(run_[a-z0-9]+)_results$") { return $Matches[1] }
+  if ($name -match "(run_[a-z0-9]+)") { return $Matches[1] }
+  return $name
+}
+
 function Index-ByCaseId($results) {
   $m = @{}
   foreach ($r in $results) {
@@ -47,11 +93,41 @@ function Count-By($results, [string]$field) {
     ForEach-Object { [PSCustomObject]@{ name = $_.Name; count = $_.Count } }
 }
 
-$baseReport = Get-RunReport $BaseRunId
-$candReport = Get-RunReport $CandRunId
+if ((Is-NonEmpty $BaseResultsPath) -and -not (Is-NonEmpty $CandResultsPath)) {
+  throw ("offline mode requires both -BaseResultsJson and -CandResultsJson (CandResultsJson is empty). bound={0}" -f (($PSBoundParameters.Keys | Sort-Object) -join ","))
+}
+if (-not (Is-NonEmpty $BaseResultsPath) -and (Is-NonEmpty $CandResultsPath)) {
+  throw ("offline mode requires both -BaseResultsJson and -CandResultsJson (BaseResultsJson is empty). bound={0}" -f (($PSBoundParameters.Keys | Sort-Object) -join ","))
+}
 
-$baseResults = Get-RunResultsAll $BaseRunId
-$candResults = Get-RunResultsAll $CandRunId
+# 兼容：若用户把 results 路径误填到了 BaseRunId/CandRunId，也可离线 compare
+if (-not (Is-NonEmpty $BaseResultsPath) -and (Is-NonEmpty $BaseRunId) -and (Test-Path $BaseRunId)) {
+  $BaseResultsPath = $BaseRunId
+  $BaseRunId = $null
+}
+if (-not (Is-NonEmpty $CandResultsPath) -and (Is-NonEmpty $CandRunId) -and (Test-Path $CandRunId)) {
+  $CandResultsPath = $CandRunId
+  $CandRunId = $null
+}
+
+$offline = (Is-NonEmpty $BaseResultsPath) -and (Is-NonEmpty $CandResultsPath)
+
+if ($offline) {
+  if (-not $BaseRunId) { $BaseRunId = Guess-RunIdFromFile $BaseResultsPath }
+  if (-not $CandRunId) { $CandRunId = Guess-RunIdFromFile $CandResultsPath }
+  $baseReport = $null
+  $candReport = $null
+  $baseResults = Read-ResultsFromFile $BaseResultsPath
+  $candResults = Read-ResultsFromFile $CandResultsPath
+} else {
+  if (-not $EvalBase) { throw "online mode requires -EvalBase" }
+  if (-not $BaseRunId) { throw "online mode requires -BaseRunId" }
+  if (-not $CandRunId) { throw "online mode requires -CandRunId" }
+  $baseReport = Get-RunReport $BaseRunId
+  $candReport = Get-RunReport $CandRunId
+  $baseResults = Get-RunResultsAll $BaseRunId
+  $candResults = Get-RunResultsAll $CandRunId
+}
 
 $baseById = Index-ByCaseId $baseResults
 $candById = Index-ByCaseId $candResults
@@ -115,8 +191,13 @@ $md = @()
 $md += ("# run.compare (client) - {0} vs {1}" -f $BaseRunId, $CandRunId)
 $md += ""
 $md += "## Summary"
-$md += "- base pass_rate: $($baseReport.pass_rate)  p95_latency_ms: $($baseReport.p95_latency_ms)"
-$md += "- cand pass_rate: $($candReport.pass_rate)  p95_latency_ms: $($candReport.p95_latency_ms)"
+if ($baseReport -and $candReport) {
+  $md += ("- base pass_rate: {0}  p95_latency_ms: {1}" -f $baseReport.pass_rate, $baseReport.p95_latency_ms)
+  $md += ("- cand pass_rate: {0}  p95_latency_ms: {1}" -f $candReport.pass_rate, $candReport.p95_latency_ms)
+} else {
+  $md += "- base report: (offline mode: not fetched)"
+  $md += "- cand report: (offline mode: not fetched)"
+}
 $md += "- regressions: $($regressions.Count)"
 $md += "- improvements: $($improvements.Count)"
 $md += "- changed verdicts: $($changed.Count)"
