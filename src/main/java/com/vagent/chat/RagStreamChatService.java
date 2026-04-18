@@ -5,6 +5,8 @@ import com.vagent.chat.message.MessageService;
 import com.vagent.chat.rag.EmptyHitsBehavior;
 import com.vagent.chat.rag.RagProperties;
 import com.vagent.conversation.ConversationService;
+import com.vagent.eval.EvalApiProperties;
+import com.vagent.eval.EvalChatSafetyGate;
 import com.vagent.kb.KnowledgeRetrieveService;
 import com.vagent.kb.RagRetrieveResult;
 import com.vagent.kb.dto.RetrieveHit;
@@ -17,6 +19,7 @@ import com.vagent.orchestration.QueryRewriteService;
 import com.vagent.orchestration.model.ChatBranch;
 import com.vagent.orchestration.model.IntentResult;
 import com.vagent.orchestration.model.RewriteResult;
+import com.vagent.rag.gate.RagPostRetrieveGate;
 import com.vagent.user.UserIdFormats;
 import com.vagent.mcp.client.McpClient;
 import com.vagent.mcp.config.McpProperties;
@@ -34,6 +37,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.Executor;
 import java.util.Locale;
@@ -72,6 +76,7 @@ public class RagStreamChatService {
     private final OrchestrationProperties orchestrationProperties;
     private final ObjectProvider<McpClient> mcpClientProvider;
     private final McpProperties mcpProperties;
+    private final EvalApiProperties evalApiProperties;
 
     public RagStreamChatService(
             ConversationService conversationService,
@@ -86,6 +91,7 @@ public class RagStreamChatService {
             OrchestrationProperties orchestrationProperties,
             ObjectProvider<McpClient> mcpClientProvider,
             McpProperties mcpProperties,
+            EvalApiProperties evalApiProperties,
             @Qualifier("llmStreamExecutor") Executor llmStreamExecutor) {
         this.conversationService = conversationService;
         this.messageService = messageService;
@@ -99,6 +105,7 @@ public class RagStreamChatService {
         this.orchestrationProperties = orchestrationProperties;
         this.mcpClientProvider = mcpClientProvider;
         this.mcpProperties = mcpProperties;
+        this.evalApiProperties = evalApiProperties;
         this.llmStreamExecutor = llmStreamExecutor;
     }
 
@@ -108,6 +115,22 @@ public class RagStreamChatService {
                 .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "会话不存在或无权访问"));
 
         String userKey = UserIdFormats.canonical(userId);
+
+        if (evalApiProperties.isSafetyRulesEnabled()) {
+            Optional<EvalChatSafetyGate.Outcome> safety =
+                    EvalChatSafetyGate.evaluatePreRetrieval(userMessage, false);
+            if (safety.isPresent()) {
+                String taskId = taskRegistry.registerTask(userKey, conversationId);
+                SseEmitter emitter = new SseEmitter(SSE_TIMEOUT_MS);
+                emitter.onCompletion(() -> taskRegistry.remove(taskId));
+                emitter.onTimeout(() -> taskRegistry.remove(taskId));
+                emitter.onError(e -> taskRegistry.remove(taskId));
+                EvalChatSafetyGate.Outcome o = safety.get();
+                llmStreamExecutor.execute(
+                        () -> runSafetyShortCircuitStream(emitter, taskId, conversationId, userId, o));
+                return emitter;
+            }
+        }
 
         List<Message> history =
                 messageService.listRecentForConversation(conversationId, ragProperties.getMaxHistoryMessages());
@@ -123,7 +146,7 @@ public class RagStreamChatService {
             branch = intent.branch();
         }
 
-        String taskId = taskRegistry.registerTask(userKey);
+        String taskId = taskRegistry.registerTask(userKey, conversationId);
         SseEmitter emitter = new SseEmitter(SSE_TIMEOUT_MS);
         emitter.onCompletion(() -> taskRegistry.remove(taskId));
         emitter.onTimeout(() -> taskRegistry.remove(taskId));
@@ -171,13 +194,23 @@ public class RagStreamChatService {
 
             retrieveTrace = knowledgeRetrieveService.searchForRag(userId, rewrite.retrievalQuery(), ragProperties);
             hits = retrieveTrace.hits();
-            if (branch == ChatBranch.RAG
-                    && hits.isEmpty()
-                    && ragProperties.getEmptyHitsBehavior() == EmptyHitsBehavior.NO_LLM) {
+            Optional<RagPostRetrieveGate.ShortCircuit> gate =
+                    RagPostRetrieveGate.shortCircuitAfterRetrieve(
+                            userMessage,
+                            hits,
+                            RagPostRetrieveGate.DEFAULT_MIN_QUERY_CHARS,
+                            evalApiProperties.getLowConfidenceCosineDistanceThreshold(),
+                            evalApiProperties.getLowConfidenceQuerySubstrings(),
+                            RagPostRetrieveGate.ZeroHitsPolicy.RESPECT_RAG_PROPERTIES,
+                            ragProperties.getEmptyHitsBehavior(),
+                            ragProperties.getEmptyHitsNoLlmMessage());
+            if (gate.isPresent()) {
+                final RagPostRetrieveGate.ShortCircuit gateSc = gate.get();
+                final RagRetrieveResult traceForGate = retrieveTrace;
                 llmStreamExecutor.execute(
                         () ->
-                                        runEmptyHitsNoLlmStream(
-                                        emitter, taskId, conversationId, userId));
+                                runRagGateShortCircuitStream(
+                                        emitter, taskId, conversationId, userId, gateSc, traceForGate));
                 return emitter;
             }
             systemText = buildSystemPromptWithToolAndKnowledge(toolContextText, hits);
@@ -230,7 +263,21 @@ public class RagStreamChatService {
             String toolError,
             RagRetrieveResult retrieveTrace) {
         try {
-            sendMeta(emitter, taskId, hitCount, branch, toolUsed, toolName, toolOutcome, toolError, retrieveTrace);
+            Map<String, Object> metaExtra = new LinkedHashMap<>();
+            if (hitCount == 0 && ragProperties.getEmptyHitsBehavior() == EmptyHitsBehavior.ALLOW_LLM) {
+                RagPostRetrieveGate.applyZeroHitsAllowLlmMeta(metaExtra);
+            }
+            sendMeta(
+                    emitter,
+                    taskId,
+                    hitCount,
+                    branch,
+                    toolUsed,
+                    toolName,
+                    toolOutcome,
+                    toolError,
+                    retrieveTrace,
+                    metaExtra);
             StringBuilder assistantBuffer = new StringBuilder();
             llmSseStreamingBridge.streamChatToSse(
                     emitter,
@@ -245,21 +292,93 @@ public class RagStreamChatService {
         }
     }
 
-    /**
-     * U3：RAG 分支检索无命中且配置为 {@link EmptyHitsBehavior#NO_LLM} 时，不调 {@link com.vagent.llm.LlmClient}，
-     * 与澄清分支同属「固定文案 + done」。
-     */
-    private void runEmptyHitsNoLlmStream(
-            SseEmitter emitter, String taskId, String conversationId, UUID userId) {
-        String text = ragProperties.getEmptyHitsNoLlmMessage();
-        runFixedAssistantStream(
-                emitter,
-                taskId,
-                conversationId,
-                userId,
-                text != null ? text : "",
-                ChatBranch.RAG.name(),
-                0);
+    private void runSafetyShortCircuitStream(
+            SseEmitter emitter,
+            String taskId,
+            String conversationId,
+            UUID userId,
+            EvalChatSafetyGate.Outcome outcome) {
+        try {
+            Map<String, Object> meta = new LinkedHashMap<>();
+            meta.put("type", "meta");
+            meta.put("taskId", taskId);
+            meta.put("hitCount", 0);
+            meta.put("retrieve_hit_count", 0);
+            meta.put("branch", ChatBranch.RAG.name());
+            meta.put("toolUsed", false);
+            applySafetyShortCircuitMeta(meta, outcome);
+            if (outcome.errorCode() != null && !outcome.errorCode().isBlank()) {
+                meta.put("error_code", outcome.errorCode());
+            }
+            sendEvent(emitter, meta);
+            if (taskRegistry.isCancelled(taskId)) {
+                sendEvent(emitter, Map.of("type", "cancelled"));
+                emitter.complete();
+                return;
+            }
+            sendEvent(emitter, Map.of("type", "chunk", "text", outcome.answer()));
+            sendEvent(emitter, Map.of("type", "done"));
+            // 与评测短路一致：不写入 messages，避免攻击面 query/拒答文案进入会话历史
+            emitter.complete();
+        } catch (Exception e) {
+            emitter.completeWithError(e);
+        }
+    }
+
+    private static void applySafetyShortCircuitMeta(
+            Map<String, Object> meta, EvalChatSafetyGate.Outcome outcome) {
+        meta.put("canonical_hit_id_scheme", "kb_chunk_id");
+        meta.put("retrieval_candidate_limit_n", 0);
+        meta.put("retrieval_candidate_total", 0);
+        meta.put("retrieval_hit_id_hashes", List.of());
+        meta.put("eval_safety_rule_id", outcome.ruleId());
+        if ("deny".equals(outcome.behavior())) {
+            meta.put("low_confidence", false);
+            meta.put("low_confidence_reasons", List.of());
+        } else {
+            meta.put("low_confidence", true);
+            meta.put("low_confidence_reasons", List.of("SAFETY_QUERY_GATE"));
+        }
+    }
+
+    private void runRagGateShortCircuitStream(
+            SseEmitter emitter,
+            String taskId,
+            String conversationId,
+            UUID userId,
+            RagPostRetrieveGate.ShortCircuit gate,
+            RagRetrieveResult retrieveTrace) {
+        try {
+            int hc = retrieveTrace != null ? retrieveTrace.hits().size() : 0;
+            Map<String, Object> metaExtra = new LinkedHashMap<>();
+            metaExtra.put("low_confidence", gate.lowConfidence());
+            metaExtra.put("low_confidence_reasons", gate.lowConfidenceReasons());
+            if (gate.errorCode() != null && !gate.errorCode().isBlank()) {
+                metaExtra.put("error_code", gate.errorCode());
+            }
+            sendMeta(
+                    emitter,
+                    taskId,
+                    hc,
+                    ChatBranch.RAG.name(),
+                    false,
+                    null,
+                    null,
+                    null,
+                    retrieveTrace,
+                    metaExtra);
+            if (taskRegistry.isCancelled(taskId)) {
+                sendEvent(emitter, Map.of("type", "cancelled"));
+                emitter.complete();
+                return;
+            }
+            sendEvent(emitter, Map.of("type", "chunk", "text", gate.answer()));
+            sendEvent(emitter, Map.of("type", "done"));
+            messageService.saveAssistantMessage(conversationId, userId, gate.answer());
+            emitter.complete();
+        } catch (Exception e) {
+            emitter.completeWithError(e);
+        }
     }
 
     /**
@@ -278,7 +397,7 @@ public class RagStreamChatService {
             String branchName,
             int hitCount) {
         try {
-            sendMeta(emitter, taskId, hitCount, branchName, false, null, null, null, null);
+            sendMeta(emitter, taskId, hitCount, branchName, false, null, null, null, null, Map.of());
             if (taskRegistry.isCancelled(taskId)) {
                 sendEvent(emitter, Map.of("type", "cancelled"));
                 emitter.complete();
@@ -302,12 +421,14 @@ public class RagStreamChatService {
             String toolName,
             String toolOutcome,
             String toolError,
-            RagRetrieveResult retrieveTrace)
+            RagRetrieveResult retrieveTrace,
+            Map<String, Object> additionalMeta)
             throws IOException {
         Map<String, Object> meta = new LinkedHashMap<>();
         meta.put("type", "meta");
         meta.put("taskId", taskId);
         meta.put("hitCount", hitCount);
+        meta.put("retrieve_hit_count", hitCount);
         meta.put("branch", branch);
         if (retrieveTrace != null) {
             retrieveTrace.putRetrievalTrace(meta);
@@ -321,6 +442,11 @@ public class RagStreamChatService {
         }
         if (toolError != null && !toolError.isBlank()) {
             meta.put("toolError", toolError);
+        }
+        if (additionalMeta != null && !additionalMeta.isEmpty()) {
+            for (Map.Entry<String, Object> e : additionalMeta.entrySet()) {
+                meta.put(e.getKey(), e.getValue());
+            }
         }
         sendEvent(emitter, meta);
     }

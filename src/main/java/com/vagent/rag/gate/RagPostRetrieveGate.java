@@ -1,0 +1,153 @@
+package com.vagent.rag.gate;
+
+import com.vagent.chat.rag.EmptyHitsBehavior;
+import com.vagent.kb.dto.RetrieveHit;
+
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.Optional;
+
+/**
+ * 检索之后、调用主 LLM 之前的统一门控结论，供 {@code POST /api/v1/eval/chat} 与 {@link com.vagent.chat.RagStreamChatService} 共用，
+ * 与 {@code plans/vagent-upgrade.md} P1-0「空命中 / 低置信」口径对齐。
+ */
+public final class RagPostRetrieveGate {
+
+    /** 与 {@link com.vagent.eval.EvalChatController} 中过短 query 门控一致。 */
+    public static final int DEFAULT_MIN_QUERY_CHARS = 3;
+
+    /** 与 {@link com.vagent.eval.EvalChatController} 默认文案一致。 */
+    public static final String MSG_EMPTY_HITS =
+            "知识库未检索到相关片段，请尝试补充关键词或更具体的问题描述。";
+
+    public static final String MSG_QUERY_TOO_SHORT = "你的问题描述过短，请补充更多上下文或关键词。";
+
+    public static final String MSG_LOW_CONFIDENCE =
+            "当前检索结果置信度不足，或问题指代不够明确；请补充具体对象、范围或关键词后再试。";
+
+    private RagPostRetrieveGate() {}
+
+    /**
+     * @param zeroHitsPolicy {@link ZeroHitsPolicy#EVAL_ALIGNED}：0 命中一律走澄清+{@code RETRIEVE_EMPTY}（评测默认）；
+     *                       {@link ZeroHitsPolicy#RESPECT_RAG_PROPERTIES}：按 {@link EmptyHitsBehavior} 区分 NO_LLM 固定文案与 ALLOW_LLM 放行
+     */
+    public static Optional<ShortCircuit> shortCircuitAfterRetrieve(
+            String query,
+            List<RetrieveHit> hits,
+            int minQueryChars,
+            Double lowConfidenceCosineDistanceThreshold,
+            List<String> lowConfidenceQuerySubstrings,
+            ZeroHitsPolicy zeroHitsPolicy,
+            EmptyHitsBehavior emptyHitsBehavior,
+            String configuredEmptyNoLlmMessage) {
+        int hitCount = hits == null ? 0 : hits.size();
+        String q = query == null ? "" : query.trim();
+
+        if (hitCount == 0) {
+            if (zeroHitsPolicy == ZeroHitsPolicy.EVAL_ALIGNED) {
+                return Optional.of(
+                        new ShortCircuit(
+                                MSG_EMPTY_HITS,
+                                "clarify",
+                                "RETRIEVE_EMPTY",
+                                true,
+                                List.of("EMPTY_HITS")));
+            }
+            if (emptyHitsBehavior == EmptyHitsBehavior.NO_LLM) {
+                String msg =
+                        configuredEmptyNoLlmMessage != null && !configuredEmptyNoLlmMessage.isBlank()
+                                ? configuredEmptyNoLlmMessage.trim()
+                                : MSG_EMPTY_HITS;
+                return Optional.of(
+                        new ShortCircuit(msg, "clarify", "RETRIEVE_EMPTY", true, List.of("EMPTY_HITS")));
+            }
+            return Optional.empty();
+        }
+
+        if (q.length() < minQueryChars) {
+            return Optional.of(
+                    new ShortCircuit(
+                            MSG_QUERY_TOO_SHORT,
+                            "clarify",
+                            "RETRIEVE_LOW_CONFIDENCE",
+                            true,
+                            List.of("QUERY_TOO_SHORT")));
+        }
+
+        boolean distLow = isDistanceLowConfidence(hits, lowConfidenceCosineDistanceThreshold);
+        boolean vagueLow = isVagueSubstringLowConfidence(q, lowConfidenceQuerySubstrings);
+        if (distLow || vagueLow) {
+            ArrayList<String> reasons = new ArrayList<>(2);
+            if (distLow) {
+                reasons.add("WEAK_TOP_HIT_DISTANCE");
+            }
+            if (vagueLow) {
+                reasons.add("VAGUE_QUERY_REFERENCE");
+            }
+            return Optional.of(
+                    new ShortCircuit(
+                            MSG_LOW_CONFIDENCE,
+                            "clarify",
+                            "RETRIEVE_LOW_CONFIDENCE",
+                            true,
+                            List.copyOf(reasons)));
+        }
+
+        return Optional.empty();
+    }
+
+    /** 0 命中且允许走 LLM 时，写入 SSE/eval 风格 meta 的前缀字段。 */
+    public static void applyZeroHitsAllowLlmMeta(java.util.Map<String, Object> meta) {
+        meta.put("retrieve_hit_count", 0);
+        meta.put("low_confidence", true);
+        meta.put("low_confidence_reasons", List.of("EMPTY_HITS"));
+    }
+
+    private static boolean isDistanceLowConfidence(List<RetrieveHit> orderedHits, Double threshold) {
+        if (threshold == null || orderedHits == null || orderedHits.isEmpty()) {
+            return false;
+        }
+        double d = orderedHits.get(0).getDistance();
+        if (Double.isNaN(d) || Double.isInfinite(d)) {
+            return false;
+        }
+        return d > threshold;
+    }
+
+    private static boolean isVagueSubstringLowConfidence(String query, List<String> subs) {
+        if (subs == null || subs.isEmpty() || query == null) {
+            return false;
+        }
+        for (String s : subs) {
+            if (s != null && !s.isBlank() && query.contains(s.strip())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public enum ZeroHitsPolicy {
+        /** 与评测接口一致：0 命中即澄清，不调 LLM。 */
+        EVAL_ALIGNED,
+        /** 尊重 {@link com.vagent.chat.rag.RagProperties#getEmptyHitsBehavior()}。 */
+        RESPECT_RAG_PROPERTIES
+    }
+
+    /**
+     * @param behavior {@code clarify} 或 {@code deny}（与 eval SSE 约定一致）
+     */
+    public record ShortCircuit(
+            String answer, String behavior, String errorCode, boolean lowConfidence, List<String> lowConfidenceReasons) {
+
+        public ShortCircuit {
+            answer = answer != null ? answer : "";
+            behavior = behavior != null ? behavior : "clarify";
+            errorCode = errorCode != null ? errorCode : "";
+            lowConfidenceReasons =
+                    lowConfidenceReasons == null
+                            ? List.of()
+                            : Collections.unmodifiableList(new ArrayList<>(lowConfidenceReasons));
+        }
+    }
+}

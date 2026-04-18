@@ -39,4 +39,16 @@ class LlmStreamTaskRegistryTest {
         assertThat(reg.isCancelled(taskId)).isFalse();
         assertThat(reg.cancel(taskId, "u")).isFalse();
     }
+
+    @Test
+    void cancelAllForConversation_marksMatchingTasks() {
+        LlmStreamTaskRegistry reg = new LlmStreamTaskRegistry();
+        String conv = "conv-1";
+        String t1 = reg.registerTask("user-a", conv);
+        String t2 = reg.registerTask("user-a", conv);
+        reg.registerTask("user-a", "other-conv");
+        assertThat(reg.cancelAllForConversation("user-a", conv)).isEqualTo(2);
+        assertThat(reg.isCancelled(t1)).isTrue();
+        assertThat(reg.isCancelled(t2)).isTrue();
+    }
 }

@@ -91,6 +91,7 @@ DDL 入口：`src/main/resources/schema-core.sql`（核心业务）、`schema-ve
 | POST | `/auth/register`、`/auth/login` | 注册与登录，返回 `token` |
 | GET | `/conversations` | 列表（需 Bearer） |
 | POST | `/conversations` | 创建会话 |
+| DELETE | `/conversations/{id}` | 删除本会话（级联删 `messages`；并标记取消本会话下进行中的 SSE 任务） |
 | POST | `/kb/documents` | 文档入库（分块+嵌入） |
 | POST | `/kb/retrieve` | 仅检索，非流式对话 |
 | POST | `/conversations/{id}/chat/stream` | **SSE 流式对话**（RAG 编排入口之一） |

@@ -8,12 +8,15 @@ import com.vagent.user.UserIdFormats;
 import com.vagent.user.UserMapper;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+
+import static org.springframework.http.HttpStatus.NOT_FOUND;
 
 /**
  * 会话领域服务：按当前用户创建与列表查询（MyBatis-Plus）。
@@ -69,6 +72,18 @@ public class ConversationService {
         c.setCreatedAt(LocalDateTime.now(ZoneOffset.UTC));
         conversationMapper.insert(c);
         return toResponse(c);
+    }
+
+    /**
+     * 删除会话（仅属主可删）；{@code messages} 由外键 ON DELETE CASCADE 级联删除。
+     */
+    @Transactional
+    public void deleteOwned(String conversationId, UUID userId) {
+        Optional<Conversation> c = findOwnedByUser(conversationId, userId);
+        if (c.isEmpty()) {
+            throw new ResponseStatusException(NOT_FOUND, "会话不存在或无权访问");
+        }
+        conversationMapper.deleteById(c.get().getId());
     }
 
     private String normalizeTitle(String title) {

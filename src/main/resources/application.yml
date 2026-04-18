@@ -66,7 +66,7 @@ vagent:
       # 以下为可选门控（默认不配置 = 关闭）；对齐 P0 rag/low_conf 见 scripts/README-eval-kb.md
       # low-confidence-cosine-distance-threshold: 0.45
       # low-confidence-query-substrings: []
-      # P0+ B 线：检索前安全/拒答短路（EvalChatSafetyGate）；单测可设 false
+      # P0+ B 线：检索前安全/拒答短路（EvalChatSafetyGate）。为 true 时同时作用于 POST /api/v1/eval/chat 与 RAG 开启时的 SSE 主链路（命中前短路；命中后规则见 vagent.rag.gate）
       safety-rules-enabled: ${VAGENT_EVAL_API_SAFETY_RULES_ENABLED:true}
   # M5：检索前改写 + 规则意图（寒暄/澄清/RAG）；详见 docs/M5-实现说明.md
   orchestration:

@@ -11,6 +11,7 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 
 import static org.hamcrest.Matchers.hasSize;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -73,5 +74,40 @@ class M1AuthConversationIntegrationTest {
     void conversationsRequireAuth() throws Exception {
         mockMvc.perform(get("/api/v1/conversations"))
                 .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void deleteConversation_removesFromList() throws Exception {
+        String registerJson = """
+                {"username":"m1_delete_user","password":"password12"}
+                """;
+        String responseBody = mockMvc.perform(post("/api/v1/auth/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(registerJson))
+                .andExpect(status().isCreated())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+
+        JsonNode root = objectMapper.readTree(responseBody);
+        String token = root.get("token").asText();
+
+        String createBody =
+                mockMvc.perform(post("/api/v1/conversations")
+                                .header("Authorization", "Bearer " + token)
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("{\"title\":\"待删\"}"))
+                        .andExpect(status().isCreated())
+                        .andReturn()
+                        .getResponse()
+                        .getContentAsString();
+        String convId = objectMapper.readTree(createBody).get("id").asText();
+
+        mockMvc.perform(delete("/api/v1/conversations/" + convId).header("Authorization", "Bearer " + token))
+                .andExpect(status().isNoContent());
+
+        mockMvc.perform(get("/api/v1/conversations").header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$", hasSize(0)));
     }
 }

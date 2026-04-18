@@ -13,7 +13,50 @@
 - **工具能力**：MCP Client（HTTP）+ 工具意图入主链路（U7：显式触发 + 白名单 + 参数收敛 + meta 字段）
 - **工程能力**：JWT、安全分层、可观测（traceId/metrics）、迁移建议（Flyway）
 
+### 验收快照（eval 联调，2026-04-18）
+
+以下为一轮 **`p0-dataset-v0.jsonl`** 全量跑通的**可复现登记**（Regression Owner 在 `plans/regression-baseline-convention.md` §4 与之对齐即可作为当前基线）。
+
+| 项 | 值 |
+|----|-----|
+| **题集逻辑名** | `p0-dataset-v0`（源：`plans/datasets/p0-dataset-v0.jsonl`） |
+| **`dataset_id`** | `ds_c734df5a78e94d1da41ae31c1c079fcf` |
+| **示例全量 `run_id`** | `run_e4d7fa1ce57f47b3a0ef4ae2198a0918` |
+| **`eval_rule_version`** | `p0.v4`（以各条 `debug.eval_rule_version` 为准） |
+| **Report 摘要** | 共 **32** case：**29 PASS**，**0 FAIL**，**3 SKIPPED_UNSUPPORTED**（`p0_v0_tool_001`～`003`：`capabilities.tools.supported=false`，eval 按规则跳过，**不计入 FAIL**） |
+| **P0 分桶（按 JSONL `tags` 统计）** | `attack/*`：**12/12 PASS**；`rag/empty`：**3/3**；`rag/low_conf`：**2/2**；**`CONTRACT_VIOLATION`=0**；**`UNKNOWN`=0** → **满足本文 §「P0 完成门槛」** |
+| **`GET .../results` 的 `meta`** | 已非 `null`：含 hybrid（`hybrid_lexical_mode=bm25` 等）、距离分桶/分位、`retrieval_hit_id_hashes`、`canonical_hit_id_scheme`、安全短路时 `eval_safety_rule_id` 等 |
+| **分桶留证脚本（本仓）** | `scripts/summarize-p0-eval-buckets.ps1`：对导出的 `results` JSON + 题集 JSONL 输出 tag 桶通过率，供日报/发版附件 |
+
+**已知缺口（持续收敛）**：`rag/low_conf` 部分 case 仍可能由 **`SAFETY_QUERY_GATE`** 短路（`retrieve_hit_count=0`），与「纯检索低置信」路径并存；分桶说明中是否单列见运营文档。**P1-0 主干已落地**：`com.vagent.rag.gate.RagPostRetrieveGate` 统一空命中/过短 query/距离与子串低置信判定；`vagent.eval.api.safety-rules-enabled=true` 时 **`EvalChatSafetyGate` 在 SSE 主链路检索前**与评测接口同规则短路；`DELETE /api/v1/conversations/{id}` 删除会话并 **`LlmStreamTaskRegistry#cancelAllForConversation`** 标记取消进行中 SSE 任务（消息由 DB CASCADE 删除）。安全短路命中时**不写入** `messages`（与评测不落库一致）。若要把 **error_code** 与 `RETRIEVE_LOW_CONFIDENCE` 字面在所有分支完全对齐，见 **P1-0** 后续「归因枚举收敛」。
+
+### 接下来怎么升级（执行顺序）
+
+1. **P1-0（后续）**：在已共用的 `RagPostRetrieveGate` / 安全门控之上，继续统一 **`rag/low_conf` 分桶口径**与 **SSE `error_code` 顶层字段**（若产品需要与 eval JSON 完全同形）；必要时抽离 `EvalApiProperties` 中与主链路共用的门控配置键（避免「评测前缀」误导）。
+2. **P1-0b**：在已通过 P0 的前提下，用 **同一 `dataset_id`** 做 hybrid / rerank 开关的 **A/B compare**（见本文 **P1-0b**）；默认仍保守，以 compare 无契约类回退为门禁。
+3. **P1-4**：工具链从「stub / 不支持」演进为 **可跑 `p0_v0_tool_*`**（registry + schema + 超时/熔断），再取消或收窄 **SKIPPED_UNSUPPORTED**。
+4. **P0-2 Reflection**：补齐 **`meta.reflection_outcome` / `meta.reflection_reasons`** 等结构化反思字段并与 eval 对齐（当前 P0 主要靠规则与行为判定）。
+5. **P0+ / 运维**：staging 可达 + nightly + GitHub Actions 真实 target 回归（见 `plans/eval-upgrade.md` §A0）。
+
 ---
+
+## Harness 统一口径（两层）
+
+> **定义**：Harness = 用于“可复现、可对比”地运行被测系统的封装层。统一口径下，本项目把 harness 拆成两层并分别验收。
+
+### 1. Evaluation Harness（评测 harness）
+
+- 负责测什么、怎么判、怎么归因、怎么 compare：dataset 导入、run 执行触发、`run.report` 聚合、`compare(base vs cand)`、`/report/buckets` 分桶统计。
+- 把结果落成可运营证据：失败清单（TopN + case_id）、regressions/improvements。
+- **回归基线约定（dataset / base run 登记、日报字段）**：`plans/regression-baseline-convention.md`。
+- **compare 摘要键 `meta-trace-keys`（P0-2）**：`plans/eval-meta-trace-keys-vagent.md`。
+- **标准 compare 与留证（P0-3）**：`plans/regression-compare-standard-runbook.md`。
+- **P1：report/看板与 `meta` 治理**：`plans/regression-p1-report-governance.md`。
+
+### 2. Execution Harness（执行 harness）
+
+- 负责被测 target 内“模型之外的一切”：受控编排（固定/受控阶段顺序）、工具治理（超时/降级/熔断）、上下文预算与可观测 trace、门控与降级收口，以及 **config_snapshot** 的可回放信息。
+- 要求 target 用结构化字段把执行证据提供给 eval：如 `meta.stage_order[]`、`meta.step_count`、`tool_outcome`/`tool_calls_count`、`hop_trace[]`（多跳）、`low_confidence_reasons[]`、`error_code` 等（字段口径以 SSOT 契约为准）。
 
 ## P0（必须做）：反幻觉与“一次性反思”闭环
 
@@ -33,7 +76,7 @@ Vagent 的“企业风格”定位下，评测接口与日志/审计必须具备
 
 ### 删除权（P0）
 
-- 用户侧删除会话时必须级联删除 messages（已有）并清理相关缓存/任务
+- 用户侧删除会话时必须级联删除 messages（**DB：`messages` → `conversations` ON DELETE CASCADE**）并清理相关任务：**`DELETE /api/v1/conversations/{conversationId}`**（JWT）先 **`cancelAllForConversation`** 再删会话行；内存任务表无会话级 `remove`（任务完成时 `remove(taskId)` 自清理）。
 
 ## P0 验收定义（强制：没有验收就不算完成）
 

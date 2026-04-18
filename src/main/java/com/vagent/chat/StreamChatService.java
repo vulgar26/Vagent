@@ -61,7 +61,7 @@ public class StreamChatService {
         conversationService.findOwnedByUser(conversationId, userId)
                 .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "会话不存在或无权访问"));
         String userKey = UserIdFormats.canonical(userId);
-        String taskId = taskRegistry.registerTask(userKey);
+        String taskId = taskRegistry.registerTask(userKey, conversationId);
         SseEmitter emitter = new SseEmitter(SSE_TIMEOUT_MS);
         emitter.onCompletion(() -> taskRegistry.remove(taskId));
         emitter.onTimeout(() -> taskRegistry.remove(taskId));

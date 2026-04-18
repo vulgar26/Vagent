@@ -17,7 +17,6 @@ import org.springframework.web.server.ResponseStatusException;
 
 import java.nio.charset.StandardCharsets;
 import java.security.GeneralSecurityException;
-import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -26,7 +25,9 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
+import com.vagent.chat.rag.EmptyHitsBehavior;
 import com.vagent.guardrails.GuardrailsProperties;
+import com.vagent.rag.gate.RagPostRetrieveGate;
 
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
@@ -56,9 +57,6 @@ import static org.springframework.http.HttpStatus.NOT_FOUND;
 @RestController("vagentEvalChatController")
 @RequestMapping("/api/v1/eval")
 public class EvalChatController {
-
-    /** 与 vagent-upgrade P0 默认 minQueryChars 对齐：过短则低置信（相对特征）。 */
-    private static final int MIN_QUERY_CHARS = 3;
 
     /** Day5：hashed membership 候选集上限（强制 N≤50）。 */
     private static final int RETRIEVAL_CANDIDATE_LIMIT_N = 50;
@@ -194,42 +192,29 @@ public class EvalChatController {
                 "retrieval_hit_id_hashes",
                 buildRetrievalHitIdHashes(xEvalToken, xEvalTargetId, xEvalDatasetId, xEvalCaseId, candidates));
 
-        boolean distanceLowConfidence = isDistanceLowConfidence(hits);
-        boolean vagueSubstringLowConfidence = isVagueQuerySubstringLowConfidence(q);
-
         String answer = "OK";
         String behavior = "answer";
         String errorCode = null;
         boolean lowConfidence;
 
-        if (hitCount == 0) {
-            lowConfidence = true;
-            meta.put("low_confidence", true);
-            meta.put("low_confidence_reasons", List.of("EMPTY_HITS"));
-            answer = "知识库未检索到相关片段，请尝试补充关键词或更具体的问题描述。";
-            behavior = "clarify";
-            errorCode = "RETRIEVE_EMPTY";
-        } else if (q.length() < MIN_QUERY_CHARS) {
-            lowConfidence = true;
-            meta.put("low_confidence", true);
-            meta.put("low_confidence_reasons", List.of("QUERY_TOO_SHORT"));
-            answer = "你的问题描述过短，请补充更多上下文或关键词。";
-            behavior = "clarify";
-            errorCode = "RETRIEVE_LOW_CONFIDENCE";
-        } else if (distanceLowConfidence || vagueSubstringLowConfidence) {
-            lowConfidence = true;
-            meta.put("low_confidence", true);
-            ArrayList<String> reasons = new ArrayList<>(2);
-            if (distanceLowConfidence) {
-                reasons.add("WEAK_TOP_HIT_DISTANCE");
-            }
-            if (vagueSubstringLowConfidence) {
-                reasons.add("VAGUE_QUERY_REFERENCE");
-            }
-            meta.put("low_confidence_reasons", List.copyOf(reasons));
-            answer = "当前检索结果置信度不足，或问题指代不够明确；请补充具体对象、范围或关键词后再试。";
-            behavior = "clarify";
-            errorCode = "RETRIEVE_LOW_CONFIDENCE";
+        Optional<RagPostRetrieveGate.ShortCircuit> gate =
+                RagPostRetrieveGate.shortCircuitAfterRetrieve(
+                        q,
+                        hits,
+                        RagPostRetrieveGate.DEFAULT_MIN_QUERY_CHARS,
+                        evalApiProperties.getLowConfidenceCosineDistanceThreshold(),
+                        evalApiProperties.getLowConfidenceQuerySubstrings(),
+                        RagPostRetrieveGate.ZeroHitsPolicy.EVAL_ALIGNED,
+                        EmptyHitsBehavior.ALLOW_LLM,
+                        null);
+        if (gate.isPresent()) {
+            RagPostRetrieveGate.ShortCircuit sc = gate.get();
+            answer = sc.answer();
+            behavior = sc.behavior();
+            errorCode = sc.errorCode();
+            lowConfidence = sc.lowConfidence();
+            meta.put("low_confidence", sc.lowConfidence());
+            meta.put("low_confidence_reasons", sc.lowConfidenceReasons());
         } else {
             lowConfidence = false;
             meta.put("low_confidence", false);
@@ -431,34 +416,6 @@ public class EvalChatController {
                         canonicalTitle(h),
                         truncateSnippet(h != null ? h.getContent() : null)))
                 .toList();
-    }
-
-    /**
-     * 首条命中余弦距离弱于阈值则低置信（{@link RetrieveHit} 注释：距离越小越相似）。
-     */
-    private boolean isDistanceLowConfidence(List<RetrieveHit> orderedHits) {
-        Double th = evalApiProperties.getLowConfidenceCosineDistanceThreshold();
-        if (th == null || orderedHits == null || orderedHits.isEmpty()) {
-            return false;
-        }
-        double d = orderedHits.get(0).getDistance();
-        if (Double.isNaN(d) || Double.isInfinite(d)) {
-            return false;
-        }
-        return d > th;
-    }
-
-    private boolean isVagueQuerySubstringLowConfidence(String query) {
-        List<String> subs = evalApiProperties.getLowConfidenceQuerySubstrings();
-        if (subs == null || subs.isEmpty() || query == null) {
-            return false;
-        }
-        for (String s : subs) {
-            if (s != null && !s.isBlank() && query.contains(s.strip())) {
-                return true;
-            }
-        }
-        return false;
     }
 
     private static List<EvalChatResponse.RetrievalHit> hitsToRetrievalHits(List<RetrieveHit> hits) {
