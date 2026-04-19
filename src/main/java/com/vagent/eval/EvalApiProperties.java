@@ -93,6 +93,7 @@ public class EvalApiProperties {
 
     /**
      * 桩工具单次执行上限（毫秒），超时则 {@code tool.succeeded=false}、{@code tool.outcome=timeout}，根级 {@code error_code=TOOL_TIMEOUT}。
+     * 亦用于 {@code tool_policy=real} 时评测接口经 {@link com.vagent.mcp.client.McpClient} 调用的超时。
      */
     private long stubToolTimeoutMs = 5_000L;
 

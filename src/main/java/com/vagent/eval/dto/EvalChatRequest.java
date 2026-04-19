@@ -25,7 +25,9 @@ public class EvalChatRequest {
     /** {@code stub|disabled|real}，与题集 {@code tool_policy} 对齐。 */
     private String toolPolicy;
 
-    /** 可选：桩工具版本/场景标识（题集扩展字段）。 */
+    /**
+     * 可选：{@code tool_policy=stub} 时为桩场景标识；{@code tool_policy=real} 时为 MCP 工具名（须在 {@code vagent.mcp.allowed-tools} 内）。
+     */
     private String toolStubId;
 
     /**

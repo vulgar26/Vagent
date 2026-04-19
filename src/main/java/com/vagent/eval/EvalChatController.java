@@ -12,6 +12,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -24,8 +25,11 @@ import java.util.Locale;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 
@@ -40,6 +44,7 @@ import com.vagent.rag.RagKnowledgeSystemPrompts;
 import com.vagent.rag.gate.RagPostRetrieveGate;
 import com.vagent.rag.gate.RagPostRetrieveGateSettings;
 import com.vagent.eval.stub.EvalStubToolService;
+import com.vagent.mcp.client.McpClient;
 import com.vagent.mcp.config.McpProperties;
 
 import javax.crypto.Mac;
@@ -67,6 +72,8 @@ import static org.springframework.http.HttpStatus.NOT_FOUND;
  * <p>P0+ B 线：{@code vagent.eval.api.safety-rules-enabled} 为 true 时，检索前经 {@link EvalChatSafetyGate} 做拒答/澄清短路。</p>
  * <p>可选：{@code vagent.eval.api.full-answer-enabled=true} 时，在未门控短路且仍为 {@code answer} 路径下调用 {@link com.vagent.llm.LlmClient}
  * 生成正文（与主链路同款提示词）；默认 false 保持占位 {@code "OK"} 以控成本与 CI 稳定性。</p>
+ * <p>{@code tool_policy=real} 且 {@code expected_behavior=tool}：在 {@code vagent.mcp.enabled}、白名单与 {@link McpClient} Bean 就绪时，
+ * 将 JSON {@code tool_stub_id} 作为 MCP 工具名调用（超时同 {@code vagent.eval.api.stub-tool-timeout-ms}）。</p>
  */
 /**
  * Bean 名显式指定，避免与包内其他 {@code EvalChatController}（若存在）默认名 {@code evalChatController} 冲突。
@@ -89,6 +96,7 @@ public class EvalChatController {
     private final LlmProperties llmProperties;
     private final EvalStubToolService evalStubToolService;
     private final McpProperties mcpProperties;
+    private final ObjectProvider<McpClient> mcpClientProvider;
 
     public EvalChatController(
             EvalApiProperties evalApiProperties,
@@ -100,7 +108,8 @@ public class EvalChatController {
             LlmClient llmClient,
             LlmProperties llmProperties,
             EvalStubToolService evalStubToolService,
-            McpProperties mcpProperties) {
+            McpProperties mcpProperties,
+            ObjectProvider<McpClient> mcpClientProvider) {
         this.evalApiProperties = evalApiProperties;
         this.debugNetworkPolicy = debugNetworkPolicy;
         this.guardrailsProperties = guardrailsProperties;
@@ -112,6 +121,7 @@ public class EvalChatController {
         this.llmProperties = llmProperties;
         this.evalStubToolService = evalStubToolService;
         this.mcpProperties = mcpProperties;
+        this.mcpClientProvider = mcpClientProvider;
     }
 
     @PostMapping("/chat")
@@ -186,6 +196,9 @@ public class EvalChatController {
         }
         if (isStubToolEvalRequest(request)) {
             return respondStubToolEval(request, meta, mode, httpRequest, xEvalCaseId, startNs, q);
+        }
+        if (isRealToolEvalRequest(request)) {
+            return respondRealToolEval(request, meta, mode, httpRequest, startNs, q);
         }
         if (isToolExpectedWithoutStubEvalExecution(request)) {
             return respondToolExpectedNonStubEval(request, meta, mode, httpRequest, startNs);
@@ -403,7 +416,8 @@ public class EvalChatController {
         meta.put("tool_eval_non_stub", true);
         String msg =
                 "real".equals(pol)
-                        ? "本题为工具题（expected_behavior=tool），但 tool_policy=real：评测接口仅保证 stub 桩路径可执行；请改用 stub 或在评测侧跳过。"
+                        ? "本题为工具题（expected_behavior=tool），但 tool_policy=real 当前无法执行：需 vagent.mcp.enabled=true、"
+                                + "allowed-tools 非空且进程内存在 McpClient Bean；并请在 JSON 中提供 tool_stub_id 作为工具名。可改用 stub 或在评测侧跳过。"
                         : ("stub".equals(pol)
                                 ? "本题为工具题但未进入桩执行，请检查 vagent.eval.api.stub-tools-enabled 与 tool_policy。"
                                 : "本题为工具题（expected_behavior=tool），但 tool_policy=disabled：未执行工具；请改用 stub 或在评测侧跳过。");
@@ -469,9 +483,182 @@ public class EvalChatController {
                 toolBlock);
     }
 
-    private boolean isStubToolRequiredButStubDisabled(EvalChatRequest request) {
+    private boolean isRealToolEvalRequest(EvalChatRequest request) {
+        if (!isExpectedBehaviorTool(request)) {
+            return false;
+        }
+        if (!"real".equals(normalizedToolPolicy(request.getToolPolicy()))) {
+            return false;
+        }
+        if (!toolsEffectiveSupported(request)) {
+            return false;
+        }
+        return mcpClientProvider.getIfAvailable() != null;
+    }
+
+    private EvalChatResponse respondRealToolEval(
+            EvalChatRequest request,
+            Map<String, Object> meta,
+            String mode,
+            HttpServletRequest httpRequest,
+            long startNs,
+            String q) {
+        meta.put("retrieve_hit_count", 0);
+        meta.put("low_confidence", false);
+        meta.put("low_confidence_reasons", List.of());
+        meta.put("canonical_hit_id_scheme", "kb_chunk_id");
+        meta.put("retrieval_candidate_limit_n", 0);
+        meta.put("retrieval_candidate_total", 0);
+        meta.put("retrieval_hit_id_hashes", List.of());
+        meta.put("eval_real_tools", true);
+        meta.put("tool_policy", "real");
+
+        String toolName =
+                request.getToolStubId() != null ? request.getToolStubId().trim() : "";
+        if (toolName.isEmpty()) {
+            String msg = "tool_policy=real 时须在 JSON 中提供 tool_stub_id（用作 MCP 工具名）。";
+            EvalBehaviorMetaSync.applyRootToMeta(meta, "clarify", null);
+            enforceRetrievalHitIdBoundary(meta, mode, httpRequest);
+            long latencyMs = (System.nanoTime() - startNs) / 1_000_000L;
+            EvalChatResponse.Tool toolBlock = new EvalChatResponse.Tool(true, false, false, "", "skipped", 0L);
+            return new EvalChatResponse(
+                    msg,
+                    "clarify",
+                    latencyMs,
+                    capabilitiesEffective(request),
+                    meta,
+                    List.of(),
+                    List.of(),
+                    null,
+                    toolBlock);
+        }
+        if (!mcpToolAllowed(toolName, mcpProperties != null ? mcpProperties.getAllowedTools() : null)) {
+            String msg = "工具「" + toolName + "」不在 vagent.mcp.allowed-tools 白名单中。";
+            EvalBehaviorMetaSync.applyRootToMeta(meta, "clarify", null);
+            enforceRetrievalHitIdBoundary(meta, mode, httpRequest);
+            long latencyMs = (System.nanoTime() - startNs) / 1_000_000L;
+            EvalChatResponse.Tool toolBlock = new EvalChatResponse.Tool(true, false, false, toolName, "skipped", 0L);
+            return new EvalChatResponse(
+                    msg,
+                    "clarify",
+                    latencyMs,
+                    capabilitiesEffective(request),
+                    meta,
+                    List.of(),
+                    List.of(),
+                    null,
+                    toolBlock);
+        }
+
+        McpClient client = mcpClientProvider.getIfAvailable();
+        Map<String, Object> args = evalMcpToolArguments(toolName, q);
+        long t0 = System.nanoTime();
+        String outcome = "success";
+        boolean succeeded = true;
+        Map<String, Object> result = Map.of();
+        try {
+            CompletableFuture<Map<String, Object>> fut =
+                    CompletableFuture.supplyAsync(() -> client.callTool(toolName, args));
+            result = fut.get(evalApiProperties.getStubToolTimeoutMs(), TimeUnit.MILLISECONDS);
+        } catch (TimeoutException e) {
+            succeeded = false;
+            outcome = "timeout";
+        } catch (ExecutionException e) {
+            succeeded = false;
+            Throwable root = e.getCause() != null ? e.getCause() : e;
+            outcome = isLikelyTimeoutEval(root) ? "timeout" : "error";
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            succeeded = false;
+            outcome = "error";
+        } catch (Exception e) {
+            succeeded = false;
+            outcome = isLikelyTimeoutEval(e) ? "timeout" : "error";
+        }
+        long latencyMsTool = (System.nanoTime() - t0) / 1_000_000L;
+
+        String behavior = "tool";
+        String errorCode = null;
+        if ("timeout".equalsIgnoreCase(outcome)) {
+            errorCode = "TOOL_TIMEOUT";
+        } else if (!succeeded) {
+            errorCode = "TOOL_ERROR";
+        }
+        String answer = succeeded ? formatMcpToolResult(result) : "MCP 工具调用失败。";
+
+        EvalChatResponse.Tool toolBlock =
+                new EvalChatResponse.Tool(true, true, succeeded, toolName, outcome, latencyMsTool);
+
+        EvalBehaviorMetaSync.applyRootToMeta(meta, behavior, errorCode);
+        enforceRetrievalHitIdBoundary(meta, mode, httpRequest);
+        long latencyMs = (System.nanoTime() - startNs) / 1_000_000L;
+        return new EvalChatResponse(
+                answer,
+                behavior,
+                latencyMs,
+                capabilitiesEffective(request),
+                meta,
+                List.of(),
+                List.of(),
+                errorCode,
+                toolBlock);
+    }
+
+    private static Map<String, Object> evalMcpToolArguments(String toolName, String userQuery) {
+        if ("ping".equalsIgnoreCase(toolName)) {
+            return Map.of();
+        }
+        if ("echo".equalsIgnoreCase(toolName)) {
+            return Map.of("message", userQuery != null ? userQuery : "");
+        }
+        return Map.of("query", userQuery != null ? userQuery : "");
+    }
+
+    private static String formatMcpToolResult(Map<String, Object> result) {
+        if (result == null || result.isEmpty()) {
+            return "";
+        }
+        Object content = result.get("content");
+        if (content != null) {
+            return String.valueOf(content);
+        }
+        return result.toString();
+    }
+
+    private static boolean isLikelyTimeoutEval(Throwable e) {
+        if (e == null) {
+            return false;
+        }
+        String m = e.getMessage();
+        if (m != null && m.toLowerCase(Locale.ROOT).contains("timeout")) {
+            return true;
+        }
+        Throwable c = e.getCause();
+        if (c != null && c != e) {
+            return isLikelyTimeoutEval(c);
+        }
+        return false;
+    }
+
+    private static boolean mcpToolAllowed(String toolName, String csvAllowed) {
+        if (toolName == null || toolName.isBlank() || csvAllowed == null || csvAllowed.isBlank()) {
+            return false;
+        }
+        for (String p : csvAllowed.split(",")) {
+            if (toolName.equals(p.trim())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean isExpectedBehaviorTool(EvalChatRequest request) {
         String exp = request.getExpectedBehavior();
-        if (exp == null || exp.isBlank() || !"tool".equalsIgnoreCase(exp.trim())) {
+        return exp != null && !exp.isBlank() && "tool".equalsIgnoreCase(exp.trim());
+    }
+
+    private boolean isStubToolRequiredButStubDisabled(EvalChatRequest request) {
+        if (!isExpectedBehaviorTool(request)) {
             return false;
         }
         return "stub".equals(normalizedToolPolicy(request.getToolPolicy())) && !evalApiProperties.isStubToolsEnabled();
@@ -481,19 +668,17 @@ public class EvalChatController {
         if (!evalApiProperties.isStubToolsEnabled()) {
             return false;
         }
-        String exp = request.getExpectedBehavior();
-        if (exp == null || exp.isBlank() || !"tool".equalsIgnoreCase(exp.trim())) {
+        if (!isExpectedBehaviorTool(request)) {
             return false;
         }
         return "stub".equals(normalizedToolPolicy(request.getToolPolicy()));
     }
 
     private boolean isToolExpectedWithoutStubEvalExecution(EvalChatRequest request) {
-        String exp = request.getExpectedBehavior();
-        if (exp == null || exp.isBlank() || !"tool".equalsIgnoreCase(exp.trim())) {
+        if (!isExpectedBehaviorTool(request)) {
             return false;
         }
-        return !isStubToolEvalRequest(request);
+        return !isStubToolEvalRequest(request) && !isRealToolEvalRequest(request);
     }
 
     private static String normalizedToolPolicy(String raw) {

@@ -18,7 +18,7 @@
 - **可观测**：请求级 **MDC `traceId`**、响应头 **`X-Trace-Id`**；异步流式线程传递 MDC；Micrometer 计时 **`vagent.rag.retrieve`**、**`vagent.chat.stream`**。
 - **DashScope**：流式对话 **`vagent.llm.provider=dashscope`**；嵌入 **`vagent.embedding.provider=dashscope`**（默认 **1024** 维，须与库表一致）。
 - **MCP**：**`vagent.mcp.enabled`** 打开后提供 **`/api/v1/mcp/*`** 联调；**`vagent.orchestration.tool-intent-enabled`** 与 **`vagent.mcp.allowed-tools`** 控制主链路是否在 RAG 分支显式调用工具并把结果写入系统上下文，**`meta`** 可出现 **`toolUsed`**、**`toolName`** 等。
-- **评测接口**：**`POST /api/v1/eval/chat`**（snake_case、非流式）；**`vagent.eval.api.enabled=false`** 时整段 **`/api/v1/eval/**`** 返回 **404**；启用后校验 **`X-Eval-Token`**（配置为明文 token 的 **SHA-256 小写 hex**，勿把明文提交进仓库）。支持 debug 模式下的命中 id 透出限制、**`full-answer-enabled`** 聚合真实回答、与 **`vagent.guardrails.reflection.*`** 配合的一次性门控（Eval **`meta`** 中相关字段）；可选 **`vagent.guardrails.quote-only.*`** + 请求体 **`quote_only: true`** 的 **quote-only** 子串门控（语义见 **`plans/quote-only-guardrails.md`**）；**`tool_policy=stub`** 时的进程内桩工具（**`vagent.eval.api.stub-tools-enabled`**）及 **`expected_behavior=tool`** 与非 stub 策略的澄清短路。
+- **评测接口**：**`POST /api/v1/eval/chat`**（snake_case、非流式）；**`vagent.eval.api.enabled=false`** 时整段 **`/api/v1/eval/**`** 返回 **404**；启用后校验 **`X-Eval-Token`**（配置为明文 token 的 **SHA-256 小写 hex**，勿把明文提交进仓库）。支持 debug 模式下的命中 id 透出限制、**`full-answer-enabled`** 聚合真实回答、与 **`vagent.guardrails.reflection.*`** 配合的一次性门控（Eval **`meta`** 中相关字段）；可选 **`vagent.guardrails.quote-only.*`** + 请求体 **`quote_only: true`** 的 **quote-only** 子串门控（语义见 **`plans/quote-only-guardrails.md`**）；**`tool_policy=stub`** 时的进程内桩工具（**`vagent.eval.api.stub-tools-enabled`**）；**`tool_policy=real`** 时在 **`vagent.mcp.enabled`** 且 **`McpClient`** 就绪下用 **`tool_stub_id`** 作为 MCP 工具名调用（否则澄清短路）；**`expected_behavior=tool`** 与非可执行工具策略的澄清短路。
 - **运维与演示**：Actuator（健康、指标等）；根目录 **Docker Compose**（PostgreSQL + pgvector）；**Dockerfile** 与 **`deploy/k8s/`** 演示清单。
 
 ---
@@ -138,6 +138,7 @@ docker compose up -d
 - **启用**：**`vagent.eval.api.enabled=true`**，并配置 **`vagent.eval.api.token-hash`**（明文 token 的 **SHA-256 小写 hex**；支持逗号分隔多哈希）。未启用时 **`/api/v1/eval/**`** 对外 **404**。  
 - **调试**：**`vagent.eval.api.debug-enabled=true`** 且请求 **`mode=EVAL_DEBUG`** 时，`meta` 才可能含明文 **`retrieval_hit_ids[]`**；可配合 **`allow-cidrs`**、**`trust-forwarded-headers`** 收紧。  
 - **行为**：与主线共享检索与门控；**`vagent.eval.api.full-answer-enabled=true`** 时可在通过门控后调用 **`LlmClient`** 生成正文（默认占位以降低 CI 成本与外网依赖）。  
+- **工具题**：**`tool_policy=stub`** 走进程内桩；**`tool_policy=real`** 在 MCP 就绪时用 **`tool_stub_id`** 调 **`McpClient`**（否则澄清）；详见 **`scripts/README-eval-kb.md`** §5。  
 - **Quote-only**：服务端 **`vagent.guardrails.quote-only.enabled=true`** 且 JSON **`"quote_only": true`** 时，对 **`behavior=answer`** 做检索正文子串核对；档位、与 **reflection** 的执行顺序、以及可选 **SSE 缓冲对齐**（**`quote-only.apply-to-sse-stream`**）见 **`plans/quote-only-guardrails.md`**。  
 - **数据脚本**：**`scripts/README-eval-kb.md`**；混合检索 / rerank A/B 与 compare 契约门禁见 **`scripts/README-hybrid-rerank-ab.md`**。
 
