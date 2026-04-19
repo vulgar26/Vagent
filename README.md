@@ -158,8 +158,9 @@ docker compose up -d
 ```
 
 **CI（本仓库）**  
-- **[.github/workflows/ci.yml](.github/workflows/ci.yml)**：在 **JDK 17** 下执行 **`./mvnw -B test`**（不依赖外网评测服务）。  
-- **[.github/workflows/eval-remote.yml](.github/workflows/eval-remote.yml)**（可选）：定时或手动触发，向 **已可达的 vagent-eval** 提交一次完整 run；需在 GitHub **Repository secrets** 中配置 **`EVAL_BASE_URL`**、**`EVAL_RUN_PAYLOAD_JSON`**，可选 **`EVAL_HTTP_TOKEN`**。未配置时步骤会跳过且 job 仍为绿。公网 / 自托管 Runner / 隧道等说明见 **`plans/ci-eval-github-actions.md`**。
+- **[.github/workflows/ci.yml](.github/workflows/ci.yml)**：在 **JDK 17** 下**分两阶段**跑测试：先 **`./mvnw -B test -P eval-smoke`**（仅 `com.vagent.eval` 包内评测相关用例），再 **`./mvnw -B test -P skip-eval-in-ci`**（其余模块，排除 eval 包），减轻单次 job 内连续启动多个 Spring 上下文时的内存压力；说明见 **`plans/eval-ci-smoke.md`**。  
+- **[.github/workflows/eval-remote.yml](.github/workflows/eval-remote.yml)**（可选）：定时或手动触发，向 **已可达的 vagent-eval** 提交一次完整 run；需在 GitHub **Repository secrets** 中配置 **`EVAL_BASE_URL`**、**`EVAL_RUN_PAYLOAD_JSON`**，可选 **`EVAL_HTTP_TOKEN`**。未配置时步骤会跳过且 job 仍为绿。公网 / 自托管 Runner / 隧道等说明见 **`plans/ci-eval-github-actions.md`**。  
+- **评测回归留证**：`base` / `cand` run 与 compare 流程见 **`plans/regression-compare-standard-runbook.md`**。
 
 ---
 

@@ -34,6 +34,7 @@
 | [评测知识库说明](../scripts/README-eval-kb.md) | 空库 / gold、混合检索对比入口 |
 | [Quote-only 门控语义与档位](quote-only-guardrails.md) | `EvalQuoteOnlyGuard` + `vagent.guardrails.quote-only.*` + 请求体 `quote_only` 的 SSOT |
 | [GitHub Actions 连真实 eval](ci-eval-github-actions.md) | 公网 / 自托管 runner / 隧道；`eval-remote.yml` + `scripts/ci-eval-remote.sh` |
+| [CI 评测烟测（双阶段 Maven）](eval-ci-smoke.md) | `eval-smoke` / `skip-eval-in-ci` profile 与 `ci.yml` 顺序 |
 
 ## 参考
 

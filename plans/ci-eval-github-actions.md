@@ -16,6 +16,7 @@
 
 ## 本仓提供的自动化
 
+- **`.github/workflows/ci.yml`**：默认 **不连 eval 服务**；先跑本仓 **eval 包烟测** 再跑其余单测（见 **[`eval-ci-smoke.md`](eval-ci-smoke.md)**）。  
 - **`.github/workflows/eval-remote.yml`**：`workflow_dispatch`（手动）+ `schedule`（默认定时，可按需改 cron）。  
   - 若未配置 `EVAL_BASE_URL` secret：步骤会 **跳过** 远程调用并打印说明，**不把整 job 标红**（避免未接 eval 的 fork 天天失败）。  
   - 配置 secret 后：调用 **`scripts/ci-eval-remote.sh`** 发起一次 **全量** run（payload 由你方在 secret 里提供完整 JSON）。

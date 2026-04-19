@@ -8,7 +8,7 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 25
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -20,6 +20,10 @@ jobs:
           java-version: "17"
           cache: maven
 
-      - name: Run unit tests
-        run: ./mvnw -B test
+      - name: Eval API smoke tests (com.vagent.eval)
+        run: ./mvnw -B test -P eval-smoke
+
+      - name: Remaining unit tests (exclude eval package)
+        if: success()
+        run: ./mvnw -B test -P skip-eval-in-ci
 
