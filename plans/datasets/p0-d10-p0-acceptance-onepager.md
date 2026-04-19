@@ -11,9 +11,9 @@
 | 维度 | 结论 | 说明 |
 |------|------|------|
 | **D 线交付（题库 + 流程资产）** | **已过线（就 D 线范围而言）** | ≥30 case；`attack/*` 套件与三类注入覆盖说明；`rag/empty` & `rag/low_conf` 分组与口径；`tool_policy` 规则与分布；版本策略与 changelog（含 v0.2）；Day6 分锅脚本与说明；Day8 日报模板 + 示例；Day9 可判定性修订。 |
-| **工程整体 P0（eval + 双 target 全绿）** | **未全绿（当前基线）** | travel-ai 上曾出现大量 FAIL、`UNKNOWN` 占比高；全量 P0 还需 A/B/C 与 eval 判定/契约收敛。 |
+| **工程整体 P0（eval + 双 target 全绿）** | **核心闭环已过线（2026-04-18）** | **`vagent-eval`** 上对 **同一 32 题 JSONL** 已分别跑通 **`vagent`**（`run_e4d7fa1ce57f47b3a0ef4ae2198a0918`，29 PASS / 3 SKIPPED tool）与 **`travel-ai`**（`run_6106023bf5354e3089cf1d8b7c4421b4`，32/32 PASS）；`compare.v1` 已验证。**留缺口**：`run.report` 尚未内联「按 `expected_behavior` / `requires_citations`」切片；**dataset 未持久化**到 DB 时重启需重导（见 `plans/eval-upgrade.md`「vagent-eval 与双 target 联调状态」）。**GitHub 托管 runner 对真实 target 的 nightly** 仍属 P0+（见 `eval-upgrade.md` A0）。 |
 
-**一句话**：**D 线 P0 任务可结案；项目级 P0 仍以组长对 A1/A2/A3 的验收为准。**
+**一句话**：**D 线 P0 任务可结案；双 target 已在 vagent-eval 上对本机 32 题留证；报告维度切片与 dataset 落库为下一小步工程项；公网自动化仍以组长 P0+ 出口为准。**
 
 ---
 
@@ -37,7 +37,7 @@
 | # | 阻塞项 | Owner | 预计修复时间（量级） |
 |---|--------|-------|----------------------|
 | 1 | `UNKNOWN` 占比高：eval 需把失败映射到 SSOT `error_code`，减少兜底 | **A（eval）** | 约 **3～5 人日**（视分支复杂度） |
-| 2 | `CONTRACT_VIOLATION`：travel-ai（及/或 Vagent）评测接口与 P0 契约对齐 | **C / B（target）** | 各约 **2～4 人日**（可并行） |
+| 2 | `CONTRACT_VIOLATION`：travel-ai 评测口 **E7 / citations** 路径 | **C** | **已收敛（2026-04-18）**；若换 `dataset_id` 或 eval 规则须回归。**Vagent** 侧仍按 B 维护。 |
 | 3 | 按 `tags`（attack/rag 桶）出 report 子通过率 | **A（eval）** | 约 **1～2 人日**（可选增强） |
 | 4 | `tool_policy` 写入 eval `EvalCase` 与硬门槛分母逻辑 | **A（eval）** | 约 **1～2 人日** |
 | 5 | 无统一 `kb_fixture` 时，`requires_citations=true` 题在「无 KB」target 上的语义（SKIP 或分集） | **A + D** | 约 **1 人日**（规则拍板 + 文档） |

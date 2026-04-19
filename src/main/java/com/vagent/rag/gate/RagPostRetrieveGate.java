@@ -11,6 +11,15 @@ import java.util.Optional;
 /**
  * 检索之后、调用主 LLM 之前的统一门控结论，供 {@code POST /api/v1/eval/chat} 与 {@link com.vagent.chat.RagStreamChatService} 共用，
  * 与 {@code plans/vagent-upgrade.md} P1-0「空命中 / 低置信」口径对齐。
+ *
+ * <p><b>调用方传入的 {@code query} 语义（须与检索实际用语对齐理解）：</b>
+ * <ul>
+ *   <li><b>评测</b>（{@link com.vagent.eval.EvalChatController}）：{@code query} 与 {@code KnowledgeRetrieveService#searchForRag} 使用的是<strong>同一段</strong>用户题面（trim 后）。</li>
+ *   <li><b>SSE 主链路</b>（{@link com.vagent.chat.RagStreamChatService}）：检索使用
+ *       {@link com.vagent.orchestration.QueryRewriteService#rewriteForRetrieval} 产出的 {@code retrievalQuery}；
+ *       当前实现里 {@code shortCircuitAfterRetrieve} 的 {@code query} 传入的是<strong>本轮用户原句</strong>（{@code userMessage}），用于「过短」与「模糊子串」规则，
+ *       与检索字符串<strong>可以不一致</strong>。若将来要与「实际参与检索的字符串」完全同一，应改为传入 {@code rewrite.retrievalQuery()} 并在策划书中更新本节。</li>
+ * </ul>
  */
 public final class RagPostRetrieveGate {
 
@@ -29,6 +38,7 @@ public final class RagPostRetrieveGate {
     private RagPostRetrieveGate() {}
 
     /**
+     * @param query 用于「过短」与「模糊子串」判定（trim 后比长度、{@code contains} 子串）；须与调用方约定是否与检索 query 同形（见类 Javadoc）。
      * @param zeroHitsPolicy {@link ZeroHitsPolicy#EVAL_ALIGNED}：0 命中一律走澄清+{@code RETRIEVE_EMPTY}（评测默认）；
      *                       {@link ZeroHitsPolicy#RESPECT_RAG_PROPERTIES}：按 {@link EmptyHitsBehavior} 区分 NO_LLM 固定文案与 ALLOW_LLM 放行
      */

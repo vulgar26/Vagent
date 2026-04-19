@@ -19,7 +19,9 @@ import com.vagent.orchestration.QueryRewriteService;
 import com.vagent.orchestration.model.ChatBranch;
 import com.vagent.orchestration.model.IntentResult;
 import com.vagent.orchestration.model.RewriteResult;
+import com.vagent.rag.RagKnowledgeSystemPrompts;
 import com.vagent.rag.gate.RagPostRetrieveGate;
+import com.vagent.rag.gate.RagPostRetrieveGateSettings;
 import com.vagent.user.UserIdFormats;
 import com.vagent.mcp.client.McpClient;
 import com.vagent.mcp.config.McpProperties;
@@ -55,6 +57,14 @@ import static org.springframework.http.HttpStatus.NOT_FOUND;
  *       {@link ChatBranch#RAG} 与原先 M4 一致（检索 query 使用改写结果）；<b>U3</b> 若检索 0 条且 {@code empty-hits-behavior=no-llm}，不调 {@link com.vagent.llm.LlmClient}；
  *       <b>U5</b> 对话检索走 {@link com.vagent.kb.KnowledgeRetrieveService#searchForRag}，可合并第二路全表召回。</li>
  * </ul>
+ *
+ * <p><b>P1-0 门控与 {@code query} 口径：</b>检索使用 {@code rewrite.retrievalQuery()}；{@link RagPostRetrieveGate#shortCircuitAfterRetrieve} 的「过短 / 模糊子串」
+ * 当前传入<strong>用户原句</strong> {@code userMessage}（与评测「整段题面」角色对应，但与检索改写句可不一致）。阈值与子串由 {@link RagPostRetrieveGateSettings} 解析（优先 {@code vagent.rag.gate.*}）。详见 {@link RagPostRetrieveGate} 与
+ * {@code plans/vagent-upgrade.md} §P1-0。
+ *
+ * <p><b>SSE 首帧 {@code meta} 与评测 JSON 对齐（P1-0 第 4 步）：</b>在<strong>安全短路</strong>、<strong>检索后门控短路</strong>、<strong>意图澄清固定文案</strong>路径下，
+ * 首条 {@code type=meta} 事件可含 {@code behavior}、{@code error_code}（snake_case，与 {@code EvalChatResponse} 根级字段<strong>同值</strong>，便于客户端与 eval 结果对照）。
+ * 走主链路 LLM 流式时首帧 {@code meta} 不强制带 {@code behavior}/{@code error_code}（与评测「成功路径根级 {@code error_code=null}」一致）。</p>
  */
 @Service
 public class RagStreamChatService {
@@ -77,6 +87,7 @@ public class RagStreamChatService {
     private final ObjectProvider<McpClient> mcpClientProvider;
     private final McpProperties mcpProperties;
     private final EvalApiProperties evalApiProperties;
+    private final RagPostRetrieveGateSettings ragPostRetrieveGateSettings;
 
     public RagStreamChatService(
             ConversationService conversationService,
@@ -92,6 +103,7 @@ public class RagStreamChatService {
             ObjectProvider<McpClient> mcpClientProvider,
             McpProperties mcpProperties,
             EvalApiProperties evalApiProperties,
+            RagPostRetrieveGateSettings ragPostRetrieveGateSettings,
             @Qualifier("llmStreamExecutor") Executor llmStreamExecutor) {
         this.conversationService = conversationService;
         this.messageService = messageService;
@@ -106,6 +118,7 @@ public class RagStreamChatService {
         this.mcpClientProvider = mcpClientProvider;
         this.mcpProperties = mcpProperties;
         this.evalApiProperties = evalApiProperties;
+        this.ragPostRetrieveGateSettings = ragPostRetrieveGateSettings;
         this.llmStreamExecutor = llmStreamExecutor;
     }
 
@@ -157,6 +170,8 @@ public class RagStreamChatService {
                     intent != null && intent.optionalClarificationHint().isPresent()
                             ? intent.optionalClarificationHint().get()
                             : orchestrationProperties.getClarificationTemplate();
+            Map<String, Object> clarifyMeta = new LinkedHashMap<>();
+            clarifyMeta.put("behavior", "clarify");
             llmStreamExecutor.execute(
                     () ->
                             runFixedAssistantStream(
@@ -166,7 +181,8 @@ public class RagStreamChatService {
                                     userId,
                                     guidance != null ? guidance : "",
                                     ChatBranch.CLARIFICATION.name(),
-                                    0));
+                                    0,
+                                    clarifyMeta));
             return emitter;
         }
 
@@ -194,13 +210,14 @@ public class RagStreamChatService {
 
             retrieveTrace = knowledgeRetrieveService.searchForRag(userId, rewrite.retrievalQuery(), ragProperties);
             hits = retrieveTrace.hits();
+            // P1-0：门控「过短/子串」用 userMessage；检索用 rewrite.retrievalQuery()（见 RagPostRetrieveGate 与 vagent-upgrade §P1-0）
             Optional<RagPostRetrieveGate.ShortCircuit> gate =
                     RagPostRetrieveGate.shortCircuitAfterRetrieve(
                             userMessage,
                             hits,
                             RagPostRetrieveGate.DEFAULT_MIN_QUERY_CHARS,
-                            evalApiProperties.getLowConfidenceCosineDistanceThreshold(),
-                            evalApiProperties.getLowConfidenceQuerySubstrings(),
+                            ragPostRetrieveGateSettings.lowConfidenceCosineDistanceThreshold(),
+                            ragPostRetrieveGateSettings.lowConfidenceQuerySubstrings(),
                             RagPostRetrieveGate.ZeroHitsPolicy.RESPECT_RAG_PROPERTIES,
                             ragProperties.getEmptyHitsBehavior(),
                             ragProperties.getEmptyHitsNoLlmMessage());
@@ -307,6 +324,9 @@ public class RagStreamChatService {
             meta.put("branch", ChatBranch.RAG.name());
             meta.put("toolUsed", false);
             applySafetyShortCircuitMeta(meta, outcome);
+            if (outcome.behavior() != null && !outcome.behavior().isBlank()) {
+                meta.put("behavior", outcome.behavior());
+            }
             if (outcome.errorCode() != null && !outcome.errorCode().isBlank()) {
                 meta.put("error_code", outcome.errorCode());
             }
@@ -353,6 +373,9 @@ public class RagStreamChatService {
             Map<String, Object> metaExtra = new LinkedHashMap<>();
             metaExtra.put("low_confidence", gate.lowConfidence());
             metaExtra.put("low_confidence_reasons", gate.lowConfidenceReasons());
+            if (gate.behavior() != null && !gate.behavior().isBlank()) {
+                metaExtra.put("behavior", gate.behavior());
+            }
             if (gate.errorCode() != null && !gate.errorCode().isBlank()) {
                 metaExtra.put("error_code", gate.errorCode());
             }
@@ -395,9 +418,20 @@ public class RagStreamChatService {
             UUID userId,
             String fullText,
             String branchName,
-            int hitCount) {
+            int hitCount,
+            Map<String, Object> metaExtra) {
         try {
-            sendMeta(emitter, taskId, hitCount, branchName, false, null, null, null, null, Map.of());
+            sendMeta(
+                    emitter,
+                    taskId,
+                    hitCount,
+                    branchName,
+                    false,
+                    null,
+                    null,
+                    null,
+                    null,
+                    metaExtra != null ? metaExtra : Map.of());
             if (taskRegistry.isCancelled(taskId)) {
                 sendEvent(emitter, Map.of("type", "cancelled"));
                 emitter.complete();
@@ -469,24 +503,7 @@ public class RagStreamChatService {
     }
 
     private String buildKnowledgeSystemPrompt(List<RetrieveHit> hits) {
-        if (hits == null || hits.isEmpty()) {
-            return "你是企业场景下的助手。当前知识库检索未命中相关片段。请结合对话历史（若有）与常识谨慎作答；"
-                    + "若无法确认内部事实，请明确说明信息来源不足，不要编造内部政策或文档细节。";
-        }
-        StringBuilder sb = new StringBuilder();
-        sb.append("你是企业场景下的助手。以下是与用户问题相关的知识库片段（按相似度排序）。请优先依据这些内容组织答案；")
-                .append("若用户问题与片段明显无关，可先简要说明再回答。片段内容：\n\n");
-        for (int i = 0; i < hits.size(); i++) {
-            RetrieveHit h = hits.get(i);
-            sb.append("--- 片段 ").append(i + 1);
-            if ("global".equals(h.getSource())) {
-                sb.append("（来源：共享语料/跨用户召回，仅作参考）");
-            }
-            sb.append(" ---\n");
-            String body = h.getContent();
-            sb.append(body != null ? body : "").append("\n\n");
-        }
-        return sb.toString();
+        return RagKnowledgeSystemPrompts.buildFromHits(hits);
     }
 
     private String buildSystemPromptWithToolAndKnowledge(String toolContextText, List<RetrieveHit> hits) {

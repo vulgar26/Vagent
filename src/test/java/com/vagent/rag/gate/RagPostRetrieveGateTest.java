@@ -78,4 +78,113 @@ class RagPostRetrieveGateTest {
         assertThat(r).isPresent();
         assertThat(r.get().lowConfidenceReasons()).containsExactly("QUERY_TOO_SHORT");
     }
+
+    @Test
+    void nullDistanceThreshold_neverTriggersWeakTopHit() {
+        RetrieveHit hit = new RetrieveHit();
+        hit.setChunkId("c1");
+        hit.setDocumentId("d1");
+        hit.setDistance(99.0);
+        Optional<RagPostRetrieveGate.ShortCircuit> r =
+                RagPostRetrieveGate.shortCircuitAfterRetrieve(
+                        "long enough query",
+                        List.of(hit),
+                        RagPostRetrieveGate.DEFAULT_MIN_QUERY_CHARS,
+                        null,
+                        List.of(),
+                        RagPostRetrieveGate.ZeroHitsPolicy.EVAL_ALIGNED,
+                        EmptyHitsBehavior.ALLOW_LLM,
+                        null);
+        assertThat(r).isEmpty();
+    }
+
+    @Test
+    void weakTopHitDistance_whenAboveThreshold() {
+        RetrieveHit hit = new RetrieveHit();
+        hit.setChunkId("c1");
+        hit.setDocumentId("d1");
+        hit.setDistance(0.99);
+        Optional<RagPostRetrieveGate.ShortCircuit> r =
+                RagPostRetrieveGate.shortCircuitAfterRetrieve(
+                        "long enough query",
+                        List.of(hit),
+                        RagPostRetrieveGate.DEFAULT_MIN_QUERY_CHARS,
+                        0.5,
+                        List.of(),
+                        RagPostRetrieveGate.ZeroHitsPolicy.EVAL_ALIGNED,
+                        EmptyHitsBehavior.ALLOW_LLM,
+                        null);
+        assertThat(r).isPresent();
+        assertThat(r.get().errorCode()).isEqualTo("RETRIEVE_LOW_CONFIDENCE");
+        assertThat(r.get().lowConfidenceReasons()).containsExactly("WEAK_TOP_HIT_DISTANCE");
+    }
+
+    @Test
+    void weakTopHitDistance_notTriggered_whenAtOrBelowThreshold() {
+        RetrieveHit hit = new RetrieveHit();
+        hit.setChunkId("c1");
+        hit.setDocumentId("d1");
+        hit.setDistance(0.5);
+        Optional<RagPostRetrieveGate.ShortCircuit> r =
+                RagPostRetrieveGate.shortCircuitAfterRetrieve(
+                        "long enough query",
+                        List.of(hit),
+                        RagPostRetrieveGate.DEFAULT_MIN_QUERY_CHARS,
+                        0.5,
+                        List.of(),
+                        RagPostRetrieveGate.ZeroHitsPolicy.EVAL_ALIGNED,
+                        EmptyHitsBehavior.ALLOW_LLM,
+                        null);
+        assertThat(r).isEmpty();
+    }
+
+    @Test
+    void vagueQuerySubstring_whenQueryContainsConfiguredSubstring() {
+        RetrieveHit hit = new RetrieveHit();
+        hit.setChunkId("c1");
+        hit.setDocumentId("d1");
+        hit.setDistance(0.1);
+        Optional<RagPostRetrieveGate.ShortCircuit> r =
+                RagPostRetrieveGate.shortCircuitAfterRetrieve(
+                        "请解释这个方案",
+                        List.of(hit),
+                        RagPostRetrieveGate.DEFAULT_MIN_QUERY_CHARS,
+                        null,
+                        List.of("这个"),
+                        RagPostRetrieveGate.ZeroHitsPolicy.EVAL_ALIGNED,
+                        EmptyHitsBehavior.ALLOW_LLM,
+                        null);
+        assertThat(r).isPresent();
+        assertThat(r.get().lowConfidenceReasons()).containsExactly("VAGUE_QUERY_REFERENCE");
+    }
+
+    @Test
+    void distanceAndVagueBothReasons_whenBothMatch() {
+        RetrieveHit hit = new RetrieveHit();
+        hit.setChunkId("c1");
+        hit.setDocumentId("d1");
+        hit.setDistance(0.99);
+        Optional<RagPostRetrieveGate.ShortCircuit> r =
+                RagPostRetrieveGate.shortCircuitAfterRetrieve(
+                        "请解释这个方案",
+                        List.of(hit),
+                        RagPostRetrieveGate.DEFAULT_MIN_QUERY_CHARS,
+                        0.5,
+                        List.of("这个"),
+                        RagPostRetrieveGate.ZeroHitsPolicy.EVAL_ALIGNED,
+                        EmptyHitsBehavior.ALLOW_LLM,
+                        null);
+        assertThat(r).isPresent();
+        assertThat(r.get().lowConfidenceReasons())
+                .containsExactly("WEAK_TOP_HIT_DISTANCE", "VAGUE_QUERY_REFERENCE");
+    }
+
+    @Test
+    void applyZeroHitsAllowLlmMeta_setsRetrieveAndLowConfidenceFlags() {
+        java.util.Map<String, Object> meta = new java.util.LinkedHashMap<>();
+        RagPostRetrieveGate.applyZeroHitsAllowLlmMeta(meta);
+        assertThat(meta.get("retrieve_hit_count")).isEqualTo(0);
+        assertThat(meta.get("low_confidence")).isEqualTo(true);
+        assertThat(meta.get("low_confidence_reasons")).isEqualTo(List.of("EMPTY_HITS"));
+    }
 }

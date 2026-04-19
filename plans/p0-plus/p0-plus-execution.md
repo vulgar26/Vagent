@@ -125,6 +125,7 @@
 
 - [ ] Vagent：`CONTRACT_VIOLATION == 0`（该 target 单次全量 run 报告为证）  
 - [ ] travel-ai：`CONTRACT_VIOLATION == 0`  
+  - **进展留证（2026-04-18，供 C 线勾选时附链接）**：`travel-ai-planner` 已实现 eval-upgrade **E7**（`meta.retrieval_hit_id_hashes[]` + `X-Eval-*` headers）；示例全量 **`run_6106023bf5354e3089cf1d8b7c4421b4`**：**32/32 PASS**，`run.report` 无 `error_code` TopN。归档：`travel-ai-planner/docs/DAY10_P0_CLOSURE.md`；规格交叉索引：`plans/eval-upgrade.md`「travel-ai 联调验收状态」。**最终以组长在冻结 dataset 上的签字 run 为准。**  
 - [ ] `UNKNOWN` 计数 ≤ **组长设定阈值**（默认建议：**≤ 8**；若基线极高可先设 **≤ 12**，**必须在启动日写入 §4.1 表**）  
 - [ ] A 的映射表已合并到仓库 `docs/` 或 `plans/` **指定路径**（由组长在启动会指定文件名）  
 

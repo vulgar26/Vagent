@@ -63,11 +63,15 @@ vagent:
       trust-forwarded-headers: ${VAGENT_EVAL_API_TRUST_FORWARDED_HEADERS:false}
       # 与 eval membership.top-n 对齐；可被请求头 X-Eval-Membership-Top-N 覆盖
       membership-top-n: ${VAGENT_EVAL_API_MEMBERSHIP_TOP_N:8}
-      # 以下为可选门控（默认不配置 = 关闭）；对齐 P0 rag/low_conf 见 scripts/README-eval-kb.md
+      # 以下为可选门控（已弃用；优先用 vagent.rag.gate.low-confidence-*，未设时仍读此处作回退）
       # low-confidence-cosine-distance-threshold: 0.45
       # low-confidence-query-substrings: []
       # P0+ B 线：检索前安全/拒答短路（EvalChatSafetyGate）。为 true 时同时作用于 POST /api/v1/eval/chat 与 RAG 开启时的 SSE 主链路（命中前短路；命中后规则见 vagent.rag.gate）
       safety-rules-enabled: ${VAGENT_EVAL_API_SAFETY_RULES_ENABLED:true}
+      # 为 true 时：eval/chat 在未门控短路且为 answer 路径下调用 LLM 写真实 answer（依赖 vagent.llm.*，有成本）；默认 false
+      full-answer-enabled: ${VAGENT_EVAL_API_FULL_ANSWER:false}
+      # full-answer 为 true 时 LLM 聚合最长等待（毫秒），范围 1000–600000
+      full-answer-timeout-ms: ${VAGENT_EVAL_API_FULL_ANSWER_TIMEOUT_MS:120000}
   # M5：检索前改写 + 规则意图（寒暄/澄清/RAG）；详见 docs/M5-实现说明.md
   orchestration:
     intent-enabled: true
@@ -108,6 +112,10 @@ vagent:
       timeout-ms: 800
       max-candidates: 20
       allow-external: false
+    # P1-0：检索后低置信门控（SSE + Eval 共用）；优先于 vagent.eval.api 下同义键（后者为兼容回退）
+    gate:
+      # low-confidence-cosine-distance-threshold: 0.45
+      # low-confidence-query-substrings: []
   # U6：MCP（独立 Python Server，HTTP）。默认关闭；启用后可用 /api/v1/mcp/* 联调工具列表与调用。
   mcp:
     enabled: false

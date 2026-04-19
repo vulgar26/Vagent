@@ -56,12 +56,16 @@ public class EvalApiProperties {
      * 余弦距离门控（与 {@code KbChunkMapper} 中 {@code <=>} 一致）：**越小越相似**。
      * 若<strong>已排序</strong>检索结果的首条距离字段 <strong>大于</strong>该值，则视为低置信并走 {@code clarify}（与 P0 {@code rag/low_conf} 对齐）。
      * {@code null} 或未配置则关闭，仅靠空命中与过短 query。
+     *
+     * <p><b>迁移：</b>优先使用 {@code vagent.rag.gate.low-confidence-cosine-distance-threshold}；本键仍绑定并作为回退。</p>
      */
     private Double lowConfidenceCosineDistanceThreshold;
 
     /**
      * 命中非空时：若用户 query 包含任一条子串（原样子串匹配），则视为低置信并走 {@code clarify}（可选，默认空列表关闭）。
      * 用于对齐 dataset 中指代不明类问句；生产勿随意填长列表以免误伤。
+     *
+     * <p><b>迁移：</b>优先使用 {@code vagent.rag.gate.low-confidence-query-substrings}；本键仍绑定并作为回退。</p>
      */
     private List<String> lowConfidenceQuerySubstrings = new ArrayList<>();
 
@@ -69,6 +73,17 @@ public class EvalApiProperties {
      * P0+ B 线：是否启用 {@link EvalChatSafetyGate}（检索前短路拒答/澄清）。默认开启；单测可关。
      */
     private boolean safetyRulesEnabled = true;
+
+    /**
+     * 为 true 时：在检索后<strong>未门控短路</strong>且仍为 {@code answer} 路径时，{@code POST /api/v1/eval/chat} 会调用主链路同款
+     * {@link com.vagent.llm.LlmClient} 生成 {@code answer}（与占位 {@code "OK"} 相对）。默认 false，避免 CI/默认 eval 依赖外网与成本。
+     */
+    private boolean fullAnswerEnabled = false;
+
+    /**
+     * {@link #fullAnswerEnabled} 为 true 时，单次 LLM 流式聚合的最长等待（毫秒）。超时则 {@code error_code=TIMEOUT}，answer 保留已生成前缀（可为空）。
+     */
+    private long fullAnswerTimeoutMs = 120_000L;
 
     public boolean isEnabled() {
         return enabled;
@@ -118,18 +133,26 @@ public class EvalApiProperties {
         this.membershipTopN = membershipTopN;
     }
 
+    /** @deprecated 配置迁移至 {@code vagent.rag.gate.low-confidence-cosine-distance-threshold}；经 {@link com.vagent.rag.gate.RagPostRetrieveGateSettings} 回退。 */
+    @Deprecated
     public Double getLowConfidenceCosineDistanceThreshold() {
         return lowConfidenceCosineDistanceThreshold;
     }
 
+    /** @deprecated 见 {@link #getLowConfidenceCosineDistanceThreshold()}。 */
+    @Deprecated
     public void setLowConfidenceCosineDistanceThreshold(Double lowConfidenceCosineDistanceThreshold) {
         this.lowConfidenceCosineDistanceThreshold = lowConfidenceCosineDistanceThreshold;
     }
 
+    /** @deprecated 配置迁移至 {@code vagent.rag.gate.low-confidence-query-substrings}；经 {@link com.vagent.rag.gate.RagPostRetrieveGateSettings} 回退。 */
+    @Deprecated
     public List<String> getLowConfidenceQuerySubstrings() {
         return lowConfidenceQuerySubstrings;
     }
 
+    /** @deprecated 见 {@link #getLowConfidenceQuerySubstrings()}。 */
+    @Deprecated
     public void setLowConfidenceQuerySubstrings(List<String> lowConfidenceQuerySubstrings) {
         this.lowConfidenceQuerySubstrings =
                 lowConfidenceQuerySubstrings != null ? lowConfidenceQuerySubstrings : new ArrayList<>();
@@ -141,6 +164,29 @@ public class EvalApiProperties {
 
     public void setSafetyRulesEnabled(boolean safetyRulesEnabled) {
         this.safetyRulesEnabled = safetyRulesEnabled;
+    }
+
+    public boolean isFullAnswerEnabled() {
+        return fullAnswerEnabled;
+    }
+
+    public void setFullAnswerEnabled(boolean fullAnswerEnabled) {
+        this.fullAnswerEnabled = fullAnswerEnabled;
+    }
+
+    public long getFullAnswerTimeoutMs() {
+        long t = fullAnswerTimeoutMs;
+        if (t < 1_000L) {
+            return 1_000L;
+        }
+        if (t > 600_000L) {
+            return 600_000L;
+        }
+        return t;
+    }
+
+    public void setFullAnswerTimeoutMs(long fullAnswerTimeoutMs) {
+        this.fullAnswerTimeoutMs = fullAnswerTimeoutMs;
     }
 }
 

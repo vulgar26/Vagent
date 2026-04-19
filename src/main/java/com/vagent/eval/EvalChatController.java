@@ -23,11 +23,21 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 
 import com.vagent.chat.rag.EmptyHitsBehavior;
 import com.vagent.guardrails.GuardrailsProperties;
+import com.vagent.llm.LlmChatRequest;
+import com.vagent.llm.LlmClient;
+import com.vagent.llm.LlmMessage;
+import com.vagent.llm.LlmStreamSink;
+import com.vagent.llm.config.LlmProperties;
+import com.vagent.rag.RagKnowledgeSystemPrompts;
 import com.vagent.rag.gate.RagPostRetrieveGate;
+import com.vagent.rag.gate.RagPostRetrieveGateSettings;
 
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
@@ -47,9 +57,11 @@ import static org.springframework.http.HttpStatus.NOT_FOUND;
  *
  * <p>P0+：读取 {@code X-Eval-Membership-Top-N}（缺省用 {@code vagent.eval.api.membership-top-n}），使 {@code sources} 与根级
  * {@code retrieval_hits} 同前 N 条候选，与 vagent-eval {@code verifyCitationMembership} 的 top_n 对齐（§16.4）。</p>
- * <p>可选：{@code vagent.eval.api.low-confidence-cosine-distance-threshold} 与 {@code low-confidence-query-substrings}
- * 在命中非空时收紧为 {@code clarify}，与 P0 {@code rag/low_conf} 对齐（默认关闭）。</p>
+ * <p>可选：检索后低置信门控阈值与子串见 {@code vagent.rag.gate.low-confidence-*}（主 SSOT）；未配置时回退
+ * {@code vagent.eval.api.low-confidence-*}（已弃用别名），与 P0 {@code rag/low_conf} 对齐（默认关闭）。</p>
  * <p>P0+ B 线：{@code vagent.eval.api.safety-rules-enabled} 为 true 时，检索前经 {@link EvalChatSafetyGate} 做拒答/澄清短路。</p>
+ * <p>可选：{@code vagent.eval.api.full-answer-enabled=true} 时，在未门控短路且仍为 {@code answer} 路径下调用 {@link com.vagent.llm.LlmClient}
+ * 生成正文（与主链路同款提示词）；默认 false 保持占位 {@code "OK"} 以控成本与 CI 稳定性。</p>
  */
 /**
  * Bean 名显式指定，避免与包内其他 {@code EvalChatController}（若存在）默认名 {@code evalChatController} 冲突。
@@ -67,19 +79,28 @@ public class EvalChatController {
     private final RagProperties ragProperties;
     private final KnowledgeRetrieveService knowledgeRetrieveService;
     private final EvalTokenVerifier tokenVerifier;
+    private final RagPostRetrieveGateSettings ragPostRetrieveGateSettings;
+    private final LlmClient llmClient;
+    private final LlmProperties llmProperties;
 
     public EvalChatController(
             EvalApiProperties evalApiProperties,
             EvalDebugNetworkPolicy debugNetworkPolicy,
             GuardrailsProperties guardrailsProperties,
             RagProperties ragProperties,
-            KnowledgeRetrieveService knowledgeRetrieveService) {
+            KnowledgeRetrieveService knowledgeRetrieveService,
+            RagPostRetrieveGateSettings ragPostRetrieveGateSettings,
+            LlmClient llmClient,
+            LlmProperties llmProperties) {
         this.evalApiProperties = evalApiProperties;
         this.debugNetworkPolicy = debugNetworkPolicy;
         this.guardrailsProperties = guardrailsProperties;
         this.ragProperties = ragProperties;
         this.knowledgeRetrieveService = knowledgeRetrieveService;
         this.tokenVerifier = new EvalTokenVerifier(evalApiProperties);
+        this.ragPostRetrieveGateSettings = ragPostRetrieveGateSettings;
+        this.llmClient = llmClient;
+        this.llmProperties = llmProperties;
     }
 
     @PostMapping("/chat")
@@ -171,7 +192,7 @@ public class EvalChatController {
 
         UUID evalUserId = EvalStableUserId.fromEvalTargetId(xEvalTargetId);
         RagRetrieveResult retrieveResult =
-                knowledgeRetrieveService.searchForRag(evalUserId, request.getQuery(), ragProperties);
+                knowledgeRetrieveService.searchForRag(evalUserId, q, ragProperties);
         hits = retrieveResult.hits();
         retrieveResult.putRetrievalTrace(meta);
         int candidateTotal = hits.size();
@@ -197,13 +218,14 @@ public class EvalChatController {
         String errorCode = null;
         boolean lowConfidence;
 
+        // P1-0：门控 query 与上文 searchForRag 题面一致（trim 后的 q）；见 RagPostRetrieveGate 与 vagent-upgrade §P1-0
         Optional<RagPostRetrieveGate.ShortCircuit> gate =
                 RagPostRetrieveGate.shortCircuitAfterRetrieve(
                         q,
                         hits,
                         RagPostRetrieveGate.DEFAULT_MIN_QUERY_CHARS,
-                        evalApiProperties.getLowConfidenceCosineDistanceThreshold(),
-                        evalApiProperties.getLowConfidenceQuerySubstrings(),
+                        ragPostRetrieveGateSettings.lowConfidenceCosineDistanceThreshold(),
+                        ragPostRetrieveGateSettings.lowConfidenceQuerySubstrings(),
                         RagPostRetrieveGate.ZeroHitsPolicy.EVAL_ALIGNED,
                         EmptyHitsBehavior.ALLOW_LLM,
                         null);
@@ -219,6 +241,16 @@ public class EvalChatController {
             lowConfidence = false;
             meta.put("low_confidence", false);
             meta.put("low_confidence_reasons", List.of());
+        }
+
+        if (evalApiProperties.isFullAnswerEnabled()
+                && gate.isEmpty()
+                && "answer".equals(behavior)) {
+            var gen = generateEvalFullAnswer(q, candidates, meta);
+            answer = gen.answer();
+            if (gen.errorCode() != null) {
+                errorCode = gen.errorCode();
+            }
         }
 
         if (guardrailsProperties.getReflection().isEnabled()) {
@@ -461,6 +493,64 @@ public class EvalChatController {
             return s;
         }
         return s.substring(0, 300);
+    }
+
+    private record EvalFullAnswerResult(String answer, String errorCode) {}
+
+    /**
+     * 与主链路共用 {@link RagKnowledgeSystemPrompts} + {@link LlmClient}；失败或超时仍返回已聚合前缀（可为空）。
+     */
+    private EvalFullAnswerResult generateEvalFullAnswer(
+            String userQuery, List<RetrieveHit> hitsForPrompt, Map<String, Object> meta) {
+        meta.put("eval_full_answer", true);
+        String system = RagKnowledgeSystemPrompts.buildFromHits(hitsForPrompt);
+        List<LlmMessage> msgs =
+                List.of(
+                        new LlmMessage(LlmMessage.Role.SYSTEM, system),
+                        new LlmMessage(LlmMessage.Role.USER, userQuery != null ? userQuery : ""));
+        String model = llmProperties.getDefaultModel() != null ? llmProperties.getDefaultModel() : "";
+        LlmChatRequest req = new LlmChatRequest(msgs, model);
+        StringBuilder buf = new StringBuilder();
+        CountDownLatch latch = new CountDownLatch(1);
+        AtomicReference<Throwable> err = new AtomicReference<>();
+        long timeoutMs = evalApiProperties.getFullAnswerTimeoutMs();
+        llmClient.streamChat(
+                req,
+                new LlmStreamSink() {
+                    @Override
+                    public void onChunk(String text) {
+                        if (text != null) {
+                            buf.append(text);
+                        }
+                    }
+
+                    @Override
+                    public void onComplete() {
+                        latch.countDown();
+                    }
+
+                    @Override
+                    public void onError(Throwable t) {
+                        err.set(t);
+                        latch.countDown();
+                    }
+                });
+        try {
+            if (!latch.await(timeoutMs, TimeUnit.MILLISECONDS)) {
+                meta.put("eval_full_answer_outcome", "timeout");
+                return new EvalFullAnswerResult(buf.toString(), "TIMEOUT");
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            meta.put("eval_full_answer_outcome", "interrupted");
+            return new EvalFullAnswerResult(buf.toString(), "TIMEOUT");
+        }
+        if (err.get() != null) {
+            meta.put("eval_full_answer_outcome", "error");
+            return new EvalFullAnswerResult(buf.toString(), "UPSTREAM_UNAVAILABLE");
+        }
+        meta.put("eval_full_answer_outcome", "ok");
+        return new EvalFullAnswerResult(buf.toString(), null);
     }
 }
 

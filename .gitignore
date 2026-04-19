@@ -46,3 +46,6 @@ src/main/resources/application-local.yml
 plans/datasets/run_failures.csv
 plans/datasets/artifacts/
 eval_run_*.json
+### Eval compare / run exports at repo root (local留证；勿提交；可从 eval API 重拉) ###
+eval_compare*.json
+eval_compare*.md
