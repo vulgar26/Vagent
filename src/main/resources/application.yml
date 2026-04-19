@@ -48,6 +48,10 @@ vagent:
       # Day7：一次性门控（引用闭环 / 低置信长度）；默认关闭以保持与旧 eval 基线一致
       enabled: ${VAGENT_GUARDRAILS_REFLECTION_ENABLED:false}
       max-answer-chars-when-low-confidence: 500
+    quote-only:
+      # 与 POST /api/v1/eval/chat 的 quote_only 请求字段配合；默认关闭。档位语义见 plans/quote-only-guardrails.md
+      enabled: ${VAGENT_GUARDRAILS_QUOTE_ONLY_ENABLED:false}
+      strictness: ${VAGENT_GUARDRAILS_QUOTE_ONLY_STRICTNESS:moderate}
   eval:
     api:
       # P0：评测接口安全边界（默认关闭；disabled 时 /api/v1/eval/** 返回 404）
@@ -72,6 +76,11 @@ vagent:
       full-answer-enabled: ${VAGENT_EVAL_API_FULL_ANSWER:false}
       # full-answer 为 true 时 LLM 聚合最长等待（毫秒），范围 1000–600000
       full-answer-timeout-ms: ${VAGENT_EVAL_API_FULL_ANSWER_TIMEOUT_MS:120000}
+      # tool_policy=stub 时的进程内桩工具；关则 capabilities.tools.supported=false（工具题 SKIPPED_UNSUPPORTED）
+      stub-tools-enabled: ${VAGENT_EVAL_API_STUB_TOOLS_ENABLED:true}
+      stub-tool-timeout-ms: ${VAGENT_EVAL_API_STUB_TOOL_TIMEOUT_MS:5000}
+      stub-tool-circuit-failure-threshold: ${VAGENT_EVAL_API_STUB_TOOL_CIRCUIT_FAILURES:5}
+      stub-tool-circuit-open-seconds: ${VAGENT_EVAL_API_STUB_TOOL_CIRCUIT_OPEN_SEC:30}
   # M5：检索前改写 + 规则意图（寒暄/澄清/RAG）；详见 docs/M5-实现说明.md
   orchestration:
     intent-enabled: true

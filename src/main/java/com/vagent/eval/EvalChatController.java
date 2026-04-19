@@ -20,6 +20,7 @@ import java.security.GeneralSecurityException;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Locale;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -38,6 +39,8 @@ import com.vagent.llm.config.LlmProperties;
 import com.vagent.rag.RagKnowledgeSystemPrompts;
 import com.vagent.rag.gate.RagPostRetrieveGate;
 import com.vagent.rag.gate.RagPostRetrieveGateSettings;
+import com.vagent.eval.stub.EvalStubToolService;
+import com.vagent.mcp.config.McpProperties;
 
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
@@ -54,6 +57,8 @@ import static org.springframework.http.HttpStatus.NOT_FOUND;
  * <p>Day6：可选 {@code vagent.eval.api.allow-cidrs} 限制明文 debug 的客户端网段；返回前再次剔除越界 {@code retrieval_hit_ids}。</p>
  * <p>Day7：{@code vagent.guardrails.reflection.enabled} 时一次性门控：{@code meta.guardrail_triggered}、{@code reflection_outcome}、
  * {@code reflection_reasons[]} 与可归因 {@code error_code}（如 {@code SOURCE_NOT_IN_HITS}、{@code GUARDRAIL_TRIGGERED}）。</p>
+ * <p>Quote-only：{@code vagent.guardrails.quote-only.enabled} 且请求 {@code quote_only=true} 时，由 {@link EvalQuoteOnlyGuard} 做子串核对；
+ * 档位见 {@code plans/quote-only-guardrails.md}。</p>
  *
  * <p>P0+：读取 {@code X-Eval-Membership-Top-N}（缺省用 {@code vagent.eval.api.membership-top-n}），使 {@code sources} 与根级
  * {@code retrieval_hits} 同前 N 条候选，与 vagent-eval {@code verifyCitationMembership} 的 top_n 对齐（§16.4）。</p>
@@ -82,6 +87,8 @@ public class EvalChatController {
     private final RagPostRetrieveGateSettings ragPostRetrieveGateSettings;
     private final LlmClient llmClient;
     private final LlmProperties llmProperties;
+    private final EvalStubToolService evalStubToolService;
+    private final McpProperties mcpProperties;
 
     public EvalChatController(
             EvalApiProperties evalApiProperties,
@@ -91,7 +98,9 @@ public class EvalChatController {
             KnowledgeRetrieveService knowledgeRetrieveService,
             RagPostRetrieveGateSettings ragPostRetrieveGateSettings,
             LlmClient llmClient,
-            LlmProperties llmProperties) {
+            LlmProperties llmProperties,
+            EvalStubToolService evalStubToolService,
+            McpProperties mcpProperties) {
         this.evalApiProperties = evalApiProperties;
         this.debugNetworkPolicy = debugNetworkPolicy;
         this.guardrailsProperties = guardrailsProperties;
@@ -101,6 +110,8 @@ public class EvalChatController {
         this.ragPostRetrieveGateSettings = ragPostRetrieveGateSettings;
         this.llmClient = llmClient;
         this.llmProperties = llmProperties;
+        this.evalStubToolService = evalStubToolService;
+        this.mcpProperties = mcpProperties;
     }
 
     @PostMapping("/chat")
@@ -134,13 +145,14 @@ public class EvalChatController {
         }
 
         if (!tokenVerifier.verifyOrFalse(xEvalToken)) {
+            EvalBehaviorMetaSync.applyRootToMeta(meta, "deny", "AUTH");
             enforceRetrievalHitIdBoundary(meta, mode, httpRequest);
             long latencyMs = (System.nanoTime() - startNs) / 1_000_000L;
             return new EvalChatResponse(
                     "",
                     "deny",
                     latencyMs,
-                    capabilitiesEffective(),
+                    capabilitiesEffective(request),
                     meta,
                     List.of(),
                     List.of(),
@@ -153,19 +165,30 @@ public class EvalChatController {
                     EvalChatSafetyGate.evaluatePreRetrieval(q, request.getRequiresCitations());
             if (safety.isPresent()) {
                 applySafetyShortCircuitMeta(meta, safety.get());
+                EvalChatSafetyGate.Outcome o = safety.get();
+                EvalBehaviorMetaSync.applyRootToMeta(meta, o.behavior(), o.errorCode());
                 enforceRetrievalHitIdBoundary(meta, mode, httpRequest);
                 long latencyMsEarly = (System.nanoTime() - startNs) / 1_000_000L;
-                EvalChatSafetyGate.Outcome o = safety.get();
                 return new EvalChatResponse(
                         o.answer(),
                         o.behavior(),
                         latencyMsEarly,
-                        capabilitiesEffective(),
+                        capabilitiesEffective(request),
                         meta,
                         List.of(),
                         List.of(),
                         o.errorCode());
             }
+        }
+
+        if (isStubToolRequiredButStubDisabled(request)) {
+            return respondStubToolFeatureDisabled(request, meta, mode, httpRequest, startNs);
+        }
+        if (isStubToolEvalRequest(request)) {
+            return respondStubToolEval(request, meta, mode, httpRequest, xEvalCaseId, startNs, q);
+        }
+        if (isToolExpectedWithoutStubEvalExecution(request)) {
+            return respondToolExpectedNonStubEval(request, meta, mode, httpRequest, startNs);
         }
 
         boolean retrievalSupported = ragProperties != null && ragProperties.isEnabled();
@@ -177,13 +200,14 @@ public class EvalChatController {
             meta.put("low_confidence", false);
             meta.put("low_confidence_reasons", List.of());
             meta.put("disabled_reason", "RETRIEVAL_DISABLED");
+            EvalBehaviorMetaSync.applyRootToMeta(meta, "deny", "POLICY_DISABLED");
             enforceRetrievalHitIdBoundary(meta, mode, httpRequest);
             long latencyMs = (System.nanoTime() - startNs) / 1_000_000L;
             return new EvalChatResponse(
                     "检索能力未启用。",
                     "deny",
                     latencyMs,
-                    capabilitiesEffective(),
+                    capabilitiesEffective(request),
                     meta,
                     sources,
                     List.of(),
@@ -277,9 +301,39 @@ public class EvalChatController {
             }
         }
 
+        if (shouldRunQuoteOnly(request, candidates, behavior)) {
+            String qs =
+                    guardrailsProperties.getQuoteOnly().getStrictness() != null
+                            ? guardrailsProperties.getQuoteOnly().getStrictness().trim().toLowerCase(Locale.ROOT)
+                            : "moderate";
+            meta.put("quote_only", true);
+            meta.put("quote_only_strictness", qs);
+            if (!meta.containsKey("guardrail_triggered")) {
+                meta.put("guardrail_triggered", false);
+            }
+            Optional<EvalReflectionOneShotGuard.Patch> quotePatch =
+                    EvalQuoteOnlyGuard.evaluate(
+                            EvalQuoteOnlyGuard.Strictness.fromConfig(guardrailsProperties.getQuoteOnly().getStrictness()),
+                            answer,
+                            corpusFromCandidates(candidates));
+            if (quotePatch.isPresent()) {
+                EvalReflectionOneShotGuard.Patch p = quotePatch.get();
+                answer = p.answer();
+                behavior = p.behavior();
+                errorCode = p.errorCode();
+                meta.put("guardrail_triggered", true);
+                meta.put("reflection_outcome", p.reflectionOutcome());
+                meta.put("reflection_reasons", p.reflectionReasons());
+            } else {
+                meta.put("quote_only_passed", true);
+            }
+        }
+
         // Day4：debug 模式可返回明文 hit ids（同 Day5 “候选集前 N” 口径）；Day6：受 allow-cidrs 约束
         maybeAttachDebugRetrievalHitIds(meta, mode, httpRequest, candidates);
         enforceRetrievalHitIdBoundary(meta, mode, httpRequest);
+
+        EvalBehaviorMetaSync.applyRootToMeta(meta, behavior, errorCode);
 
         long latencyMs = (System.nanoTime() - startNs) / 1_000_000L;
 
@@ -287,11 +341,165 @@ public class EvalChatController {
                 answer,
                 behavior,
                 latencyMs,
-                capabilitiesEffective(),
+                capabilitiesEffective(request),
                 meta,
                 sources,
                 retrievalHits,
                 errorCode);
+    }
+
+    private EvalChatResponse respondStubToolFeatureDisabled(
+            EvalChatRequest request,
+            Map<String, Object> meta,
+            String mode,
+            HttpServletRequest httpRequest,
+            long startNs) {
+        meta.put("retrieve_hit_count", 0);
+        meta.put("low_confidence", false);
+        meta.put("low_confidence_reasons", List.of());
+        meta.put("canonical_hit_id_scheme", "kb_chunk_id");
+        meta.put("retrieval_candidate_limit_n", 0);
+        meta.put("retrieval_candidate_total", 0);
+        meta.put("retrieval_hit_id_hashes", List.of());
+        meta.put("stub_tools_disabled", true);
+        meta.put("tool_policy", "stub");
+        String msg = "评测桩工具已在配置中关闭（vagent.eval.api.stub-tools-enabled=false）。";
+        EvalBehaviorMetaSync.applyRootToMeta(meta, "clarify", null);
+        enforceRetrievalHitIdBoundary(meta, mode, httpRequest);
+        long latencyMs = (System.nanoTime() - startNs) / 1_000_000L;
+        EvalChatResponse.Tool toolBlock = new EvalChatResponse.Tool(true, false, false, "", "skipped", 0L);
+        return new EvalChatResponse(
+                msg,
+                "clarify",
+                latencyMs,
+                capabilitiesEffective(request),
+                meta,
+                List.of(),
+                List.of(),
+                null,
+                toolBlock);
+    }
+
+    /**
+     * {@code expected_behavior=tool} 且当前请求不会进入 {@link #respondStubToolEval}（例如 {@code tool_policy=disabled|real}）时，
+     * 禁止误走 RAG 并返回 {@code behavior=answer}，以免与题集工具语义冲突。
+     */
+    private EvalChatResponse respondToolExpectedNonStubEval(
+            EvalChatRequest request,
+            Map<String, Object> meta,
+            String mode,
+            HttpServletRequest httpRequest,
+            long startNs) {
+        meta.put("retrieve_hit_count", 0);
+        meta.put("low_confidence", false);
+        meta.put("low_confidence_reasons", List.of());
+        meta.put("canonical_hit_id_scheme", "kb_chunk_id");
+        meta.put("retrieval_candidate_limit_n", 0);
+        meta.put("retrieval_candidate_total", 0);
+        meta.put("retrieval_hit_id_hashes", List.of());
+        String pol = normalizedToolPolicy(request.getToolPolicy());
+        meta.put("tool_policy", pol);
+        meta.put("tool_eval_non_stub", true);
+        String msg =
+                "real".equals(pol)
+                        ? "本题为工具题（expected_behavior=tool），但 tool_policy=real：评测接口仅保证 stub 桩路径可执行；请改用 stub 或在评测侧跳过。"
+                        : ("stub".equals(pol)
+                                ? "本题为工具题但未进入桩执行，请检查 vagent.eval.api.stub-tools-enabled 与 tool_policy。"
+                                : "本题为工具题（expected_behavior=tool），但 tool_policy=disabled：未执行工具；请改用 stub 或在评测侧跳过。");
+        EvalBehaviorMetaSync.applyRootToMeta(meta, "clarify", null);
+        enforceRetrievalHitIdBoundary(meta, mode, httpRequest);
+        long latencyMs = (System.nanoTime() - startNs) / 1_000_000L;
+        EvalChatResponse.Tool toolBlock = new EvalChatResponse.Tool(true, false, false, "", "skipped", 0L);
+        return new EvalChatResponse(
+                msg,
+                "clarify",
+                latencyMs,
+                capabilitiesEffective(request),
+                meta,
+                List.of(),
+                List.of(),
+                null,
+                toolBlock);
+    }
+
+    private EvalChatResponse respondStubToolEval(
+            EvalChatRequest request,
+            Map<String, Object> meta,
+            String mode,
+            HttpServletRequest httpRequest,
+            String xEvalCaseId,
+            long startNs,
+            String q) {
+        meta.put("retrieve_hit_count", 0);
+        meta.put("low_confidence", false);
+        meta.put("low_confidence_reasons", List.of());
+        meta.put("canonical_hit_id_scheme", "kb_chunk_id");
+        meta.put("retrieval_candidate_limit_n", 0);
+        meta.put("retrieval_candidate_total", 0);
+        meta.put("retrieval_hit_id_hashes", List.of());
+        meta.put("eval_stub_tools", true);
+        meta.put("tool_policy", "stub");
+
+        EvalStubToolService.Result r = evalStubToolService.runStub(xEvalCaseId, q);
+        EvalChatResponse.Tool toolBlock =
+                new EvalChatResponse.Tool(
+                        true, true, r.succeeded(), r.toolName(), r.outcome(), r.latencyMs());
+
+        String behavior = "tool";
+        String errorCode = null;
+        if ("timeout".equalsIgnoreCase(r.outcome())) {
+            errorCode = "TOOL_TIMEOUT";
+        } else if (!r.succeeded()) {
+            errorCode = "TOOL_ERROR";
+        }
+
+        EvalBehaviorMetaSync.applyRootToMeta(meta, behavior, errorCode);
+        enforceRetrievalHitIdBoundary(meta, mode, httpRequest);
+        long latencyMs = (System.nanoTime() - startNs) / 1_000_000L;
+        return new EvalChatResponse(
+                r.answer(),
+                behavior,
+                latencyMs,
+                capabilitiesEffective(request),
+                meta,
+                List.of(),
+                List.of(),
+                errorCode,
+                toolBlock);
+    }
+
+    private boolean isStubToolRequiredButStubDisabled(EvalChatRequest request) {
+        String exp = request.getExpectedBehavior();
+        if (exp == null || exp.isBlank() || !"tool".equalsIgnoreCase(exp.trim())) {
+            return false;
+        }
+        return "stub".equals(normalizedToolPolicy(request.getToolPolicy())) && !evalApiProperties.isStubToolsEnabled();
+    }
+
+    private boolean isStubToolEvalRequest(EvalChatRequest request) {
+        if (!evalApiProperties.isStubToolsEnabled()) {
+            return false;
+        }
+        String exp = request.getExpectedBehavior();
+        if (exp == null || exp.isBlank() || !"tool".equalsIgnoreCase(exp.trim())) {
+            return false;
+        }
+        return "stub".equals(normalizedToolPolicy(request.getToolPolicy()));
+    }
+
+    private boolean isToolExpectedWithoutStubEvalExecution(EvalChatRequest request) {
+        String exp = request.getExpectedBehavior();
+        if (exp == null || exp.isBlank() || !"tool".equalsIgnoreCase(exp.trim())) {
+            return false;
+        }
+        return !isStubToolEvalRequest(request);
+    }
+
+    private static String normalizedToolPolicy(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return "disabled";
+        }
+        return raw.trim().toLowerCase(Locale.ROOT);
     }
 
     private static void applySafetyShortCircuitMeta(Map<String, Object> meta, EvalChatSafetyGate.Outcome outcome) {
@@ -415,17 +623,56 @@ public class EvalChatController {
         return new String(hex);
     }
 
-    private EvalChatResponse.Capabilities capabilitiesEffective() {
+    private EvalChatResponse.Capabilities capabilitiesEffective(EvalChatRequest request) {
         boolean retrievalSupported = ragProperties != null && ragProperties.isEnabled();
         boolean reflectionOn =
                 guardrailsProperties != null && guardrailsProperties.getReflection().isEnabled();
+        boolean quoteOnlyOn =
+                guardrailsProperties != null && guardrailsProperties.getQuoteOnly().isEnabled();
+        boolean toolsSupported = toolsEffectiveSupported(request);
+        Boolean toolSub = toolsSupported ? Boolean.TRUE : null;
         return new EvalChatResponse.Capabilities(
                 new EvalChatResponse.CapabilityFlag(retrievalSupported, false, null),
-                // supported=false 时，子能力字段不适用，置为 null
-                new EvalChatResponse.CapabilityFlag(false, null, null),
+                new EvalChatResponse.CapabilityFlag(toolsSupported, toolSub, toolSub),
                 new EvalChatResponse.StreamingFlag(false),
-                new EvalChatResponse.GuardrailsFlag(false, false, reflectionOn)
+                new EvalChatResponse.GuardrailsFlag(quoteOnlyOn, false, reflectionOn)
         );
+    }
+
+    private boolean toolsEffectiveSupported(EvalChatRequest request) {
+        String pol = normalizedToolPolicy(request != null ? request.getToolPolicy() : null);
+        if ("stub".equals(pol)) {
+            return evalApiProperties.isStubToolsEnabled();
+        }
+        if ("real".equals(pol)) {
+            return mcpProperties != null
+                    && mcpProperties.isEnabled()
+                    && mcpProperties.getAllowedTools() != null
+                    && !mcpProperties.getAllowedTools().isBlank();
+        }
+        return false;
+    }
+
+    private boolean shouldRunQuoteOnly(EvalChatRequest request, List<RetrieveHit> candidates, String behavior) {
+        if (guardrailsProperties.getQuoteOnly() == null
+                || !guardrailsProperties.getQuoteOnly().isEnabled()
+                || !Boolean.TRUE.equals(request.getQuoteOnly())) {
+            return false;
+        }
+        if (!"answer".equals(behavior) || candidates == null || candidates.isEmpty()) {
+            return false;
+        }
+        return true;
+    }
+
+    private static List<String> corpusFromCandidates(List<RetrieveHit> candidates) {
+        if (candidates == null || candidates.isEmpty()) {
+            return List.of();
+        }
+        return candidates.stream()
+                .map(RetrieveHit::getContent)
+                .filter(c -> c != null && !c.isBlank())
+                .toList();
     }
 
     private static Set<String> allowedHitIdsFromCandidates(List<RetrieveHit> candidates) {

@@ -6,6 +6,7 @@ import com.vagent.chat.rag.EmptyHitsBehavior;
 import com.vagent.chat.rag.RagProperties;
 import com.vagent.conversation.ConversationService;
 import com.vagent.eval.EvalApiProperties;
+import com.vagent.eval.EvalBehaviorMetaSync;
 import com.vagent.eval.EvalChatSafetyGate;
 import com.vagent.kb.KnowledgeRetrieveService;
 import com.vagent.kb.RagRetrieveResult;
@@ -62,9 +63,9 @@ import static org.springframework.http.HttpStatus.NOT_FOUND;
  * 当前传入<strong>用户原句</strong> {@code userMessage}（与评测「整段题面」角色对应，但与检索改写句可不一致）。阈值与子串由 {@link RagPostRetrieveGateSettings} 解析（优先 {@code vagent.rag.gate.*}）。详见 {@link RagPostRetrieveGate} 与
  * {@code plans/vagent-upgrade.md} §P1-0。
  *
- * <p><b>SSE 首帧 {@code meta} 与评测 JSON 对齐（P1-0 第 4 步）：</b>在<strong>安全短路</strong>、<strong>检索后门控短路</strong>、<strong>意图澄清固定文案</strong>路径下，
- * 首条 {@code type=meta} 事件可含 {@code behavior}、{@code error_code}（snake_case，与 {@code EvalChatResponse} 根级字段<strong>同值</strong>，便于客户端与 eval 结果对照）。
- * 走主链路 LLM 流式时首帧 {@code meta} 不强制带 {@code behavior}/{@code error_code}（与评测「成功路径根级 {@code error_code=null}」一致）。</p>
+ * <p><b>SSE 首帧 {@code meta} 与评测根级对齐（P1-0 收口）：</b>首条 {@code type=meta} 均经 {@link com.vagent.eval.EvalBehaviorMetaSync#applyRootToMeta}
+ * 写入 {@code behavior}/{@code error_code}，与 {@link com.vagent.eval.dto.EvalChatResponse} 根级字段<strong>同值</strong>；成功走主链路 LLM 时为
+ * {@code behavior=answer} 且不写 {@code error_code}（等同根级无归因码）。安全短路、检索后门控短路、意图澄清分支同理。</p>
  */
 @Service
 public class RagStreamChatService {
@@ -171,7 +172,7 @@ public class RagStreamChatService {
                             ? intent.optionalClarificationHint().get()
                             : orchestrationProperties.getClarificationTemplate();
             Map<String, Object> clarifyMeta = new LinkedHashMap<>();
-            clarifyMeta.put("behavior", "clarify");
+            EvalBehaviorMetaSync.applyRootToMeta(clarifyMeta, "clarify", null);
             llmStreamExecutor.execute(
                     () ->
                             runFixedAssistantStream(
@@ -284,6 +285,7 @@ public class RagStreamChatService {
             if (hitCount == 0 && ragProperties.getEmptyHitsBehavior() == EmptyHitsBehavior.ALLOW_LLM) {
                 RagPostRetrieveGate.applyZeroHitsAllowLlmMeta(metaExtra);
             }
+            EvalBehaviorMetaSync.applyRootToMeta(metaExtra, "answer", null);
             sendMeta(
                     emitter,
                     taskId,
@@ -324,12 +326,7 @@ public class RagStreamChatService {
             meta.put("branch", ChatBranch.RAG.name());
             meta.put("toolUsed", false);
             applySafetyShortCircuitMeta(meta, outcome);
-            if (outcome.behavior() != null && !outcome.behavior().isBlank()) {
-                meta.put("behavior", outcome.behavior());
-            }
-            if (outcome.errorCode() != null && !outcome.errorCode().isBlank()) {
-                meta.put("error_code", outcome.errorCode());
-            }
+            EvalBehaviorMetaSync.applyRootToMeta(meta, outcome.behavior(), outcome.errorCode());
             sendEvent(emitter, meta);
             if (taskRegistry.isCancelled(taskId)) {
                 sendEvent(emitter, Map.of("type", "cancelled"));
@@ -373,12 +370,7 @@ public class RagStreamChatService {
             Map<String, Object> metaExtra = new LinkedHashMap<>();
             metaExtra.put("low_confidence", gate.lowConfidence());
             metaExtra.put("low_confidence_reasons", gate.lowConfidenceReasons());
-            if (gate.behavior() != null && !gate.behavior().isBlank()) {
-                metaExtra.put("behavior", gate.behavior());
-            }
-            if (gate.errorCode() != null && !gate.errorCode().isBlank()) {
-                metaExtra.put("error_code", gate.errorCode());
-            }
+            EvalBehaviorMetaSync.applyRootToMeta(metaExtra, gate.behavior(), gate.errorCode());
             sendMeta(
                     emitter,
                     taskId,

@@ -91,3 +91,4 @@
 - P0-2 meta 摘要键：`plans/eval-meta-trace-keys-vagent.md`
 - P1 report/看板与契约治理：`plans/regression-p1-report-governance.md`
 - Eval API：`plans/eval-upgrade.md`
+- 混合检索 / rerank 开关在同一 `dataset_id` 下的 A/B 与 compare 门禁：`scripts/README-hybrid-rerank-ab.md`（`compare-eval-runs.ps1` 的 `-RequireSameDataset`、`-StrictContractGate`）

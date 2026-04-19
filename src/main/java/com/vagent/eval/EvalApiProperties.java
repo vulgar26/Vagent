@@ -85,6 +85,25 @@ public class EvalApiProperties {
      */
     private long fullAnswerTimeoutMs = 120_000L;
 
+    /**
+     * 为 true 时：对 {@code tool_policy=stub} 且 {@code expected_behavior=tool} 的请求走进程内桩工具（不依赖 MCP），
+     * 使 vagent-eval 不再因 {@code capabilities.tools.supported=false} 判 {@code SKIPPED_UNSUPPORTED}。默认开启；无 MCP 的 CI 可保持工具题可跑。
+     */
+    private boolean stubToolsEnabled = true;
+
+    /**
+     * 桩工具单次执行上限（毫秒），超时则 {@code tool.succeeded=false}、{@code tool.outcome=timeout}，根级 {@code error_code=TOOL_TIMEOUT}。
+     */
+    private long stubToolTimeoutMs = 5_000L;
+
+    /**
+     * 简易熔断：同一桩工具名连续失败（超时/异常）达到该次数后，在 {@link #stubToolCircuitOpenSeconds} 内直接拒绝调用。
+     */
+    private int stubToolCircuitFailureThreshold = 5;
+
+    /** 熔断打开持续时间（秒）。 */
+    private int stubToolCircuitOpenSeconds = 30;
+
     public boolean isEnabled() {
         return enabled;
     }
@@ -187,6 +206,47 @@ public class EvalApiProperties {
 
     public void setFullAnswerTimeoutMs(long fullAnswerTimeoutMs) {
         this.fullAnswerTimeoutMs = fullAnswerTimeoutMs;
+    }
+
+    public boolean isStubToolsEnabled() {
+        return stubToolsEnabled;
+    }
+
+    public void setStubToolsEnabled(boolean stubToolsEnabled) {
+        this.stubToolsEnabled = stubToolsEnabled;
+    }
+
+    public long getStubToolTimeoutMs() {
+        long t = stubToolTimeoutMs;
+        if (t < 200L) {
+            return 200L;
+        }
+        if (t > 60_000L) {
+            return 60_000L;
+        }
+        return t;
+    }
+
+    public void setStubToolTimeoutMs(long stubToolTimeoutMs) {
+        this.stubToolTimeoutMs = stubToolTimeoutMs;
+    }
+
+    public int getStubToolCircuitFailureThreshold() {
+        int v = stubToolCircuitFailureThreshold;
+        return v >= 1 ? v : 5;
+    }
+
+    public void setStubToolCircuitFailureThreshold(int stubToolCircuitFailureThreshold) {
+        this.stubToolCircuitFailureThreshold = stubToolCircuitFailureThreshold;
+    }
+
+    public int getStubToolCircuitOpenSeconds() {
+        int s = stubToolCircuitOpenSeconds;
+        return s >= 1 ? s : 30;
+    }
+
+    public void setStubToolCircuitOpenSeconds(int stubToolCircuitOpenSeconds) {
+        this.stubToolCircuitOpenSeconds = stubToolCircuitOpenSeconds;
     }
 }
 

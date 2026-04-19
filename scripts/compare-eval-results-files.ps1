@@ -1,10 +1,13 @@
 param(
   [Parameter(Mandatory = $true)][string]$BaseResultsJson,
   [Parameter(Mandatory = $true)][string]$CandResultsJson,
-  [string]$OutDir = "."
+  [string]$OutDir = ".",
+  [switch]$StrictContractGate
 )
 
 $ErrorActionPreference = "Stop"
+
+. "$PSScriptRoot\eval-compare-contract.ps1"
 
 function Read-ResultsFromFile([string]$path) {
   if (-not (Test-Path $path)) { throw "results json not found: $path" }
@@ -76,6 +79,8 @@ foreach ($cid in $allCaseIds) {
   }
 }
 
+$contractRegressions = @(Get-EvalRegressionContractRows -Regressions @($regressions))
+
 $compare = [ordered]@{
   compare_version = "run.compare.files.v1"
   base_run_id = $BaseRunId
@@ -87,6 +92,8 @@ $compare = [ordered]@{
   regressions = $regressions
   improvements = $improvements
   changed = $changed
+  contract_regression_count = $contractRegressions.Count
+  contract_regressions = $contractRegressions
 }
 
 New-Item -ItemType Directory -Force -Path $OutDir | Out-Null
@@ -102,11 +109,22 @@ $md += "## Summary"
 $md += "- regressions: $($regressions.Count)"
 $md += "- improvements: $($improvements.Count)"
 $md += "- changed verdicts: $($changed.Count)"
+$md += "- contract regressions (subset): $($contractRegressions.Count)"
 $md += ""
 $md += "## Regressions (PASS -> non-PASS)"
 if ($regressions.Count -eq 0) { $md += "- (none)" } else {
   foreach ($r in $regressions) {
     $md += "- $($r.case_id): $($r.base_verdict) -> $($r.cand_verdict) (base=$($r.base_error_code) cand=$($r.cand_error_code))"
+  }
+}
+$md += ""
+$md += "## Contract regressions (PASS -> non-PASS, cand_error_code in contract set)"
+if ($contractRegressions.Count -eq 0) {
+  $md += "- (none)"
+}
+else {
+  foreach ($r in $contractRegressions) {
+    $md += "- $($r.case_id): $($r.base_verdict) -> $($r.cand_verdict) (cand_error_code=$($r.cand_error_code))"
   }
 }
 $md += ""
@@ -122,3 +140,7 @@ $md -join "`n" | Set-Content -Path $mdPath -Encoding utf8
 Write-Host "Wrote: $jsonPath"
 Write-Host "Wrote: $mdPath"
 
+if ($StrictContractGate -and $contractRegressions.Count -gt 0) {
+  Write-Host ("StrictContractGate FAIL: {0} regression(s) with contract-class cand_error_code" -f $contractRegressions.Count) -ForegroundColor Red
+  exit 1
+}

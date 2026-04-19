@@ -12,6 +12,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 public class GuardrailsProperties {
 
     private Reflection reflection = new Reflection();
+    private QuoteOnly quoteOnly = new QuoteOnly();
 
     public Reflection getReflection() {
         return reflection;
@@ -19,6 +20,45 @@ public class GuardrailsProperties {
 
     public void setReflection(Reflection reflection) {
         this.reflection = reflection != null ? reflection : new Reflection();
+    }
+
+    public QuoteOnly getQuoteOnly() {
+        return quoteOnly;
+    }
+
+    public void setQuoteOnly(QuoteOnly quoteOnly) {
+        this.quoteOnly = quoteOnly != null ? quoteOnly : new QuoteOnly();
+    }
+
+    /**
+     * Quote-only：与题集 {@code quote_only=true} 配合；服务端总开关关闭时请求字段无效。
+     * 判定规则见 {@code plans/quote-only-guardrails.md}。
+     */
+    public static class QuoteOnly {
+
+        /** 默认关闭，避免改变既有 eval 基线。 */
+        private boolean enabled = false;
+
+        /**
+         * {@code relaxed|moderate|strict}，不区分大小写；无法解析时回退 {@code moderate}。
+         */
+        private String strictness = "moderate";
+
+        public boolean isEnabled() {
+            return enabled;
+        }
+
+        public void setEnabled(boolean enabled) {
+            this.enabled = enabled;
+        }
+
+        public String getStrictness() {
+            return strictness;
+        }
+
+        public void setStrictness(String strictness) {
+            this.strictness = strictness != null ? strictness : "moderate";
+        }
     }
 
     public static class Reflection {

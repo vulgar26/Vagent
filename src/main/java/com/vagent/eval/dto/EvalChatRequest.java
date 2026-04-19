@@ -19,6 +19,21 @@ public class EvalChatRequest {
      */
     private Boolean requiresCitations;
 
+    /** 与题集对齐：{@code answer|clarify|deny|tool} 等。 */
+    private String expectedBehavior;
+
+    /** {@code stub|disabled|real}，与题集 {@code tool_policy} 对齐。 */
+    private String toolPolicy;
+
+    /** 可选：桩工具版本/场景标识（题集扩展字段）。 */
+    private String toolStubId;
+
+    /**
+     * 为 true 且服务端 {@code vagent.guardrails.quote-only.enabled=true} 时：对 {@code behavior=answer} 做 quote-only
+     * 子串核对（见 {@code plans/quote-only-guardrails.md}）。
+     */
+    private Boolean quoteOnly;
+
     public String getQuery() {
         return query;
     }
@@ -49,6 +64,38 @@ public class EvalChatRequest {
 
     public void setRequiresCitations(Boolean requiresCitations) {
         this.requiresCitations = requiresCitations;
+    }
+
+    public String getExpectedBehavior() {
+        return expectedBehavior;
+    }
+
+    public void setExpectedBehavior(String expectedBehavior) {
+        this.expectedBehavior = expectedBehavior;
+    }
+
+    public String getToolPolicy() {
+        return toolPolicy;
+    }
+
+    public void setToolPolicy(String toolPolicy) {
+        this.toolPolicy = toolPolicy;
+    }
+
+    public String getToolStubId() {
+        return toolStubId;
+    }
+
+    public void setToolStubId(String toolStubId) {
+        this.toolStubId = toolStubId;
+    }
+
+    public Boolean getQuoteOnly() {
+        return quoteOnly;
+    }
+
+    public void setQuoteOnly(Boolean quoteOnly) {
+        this.quoteOnly = quoteOnly;
     }
 }
 

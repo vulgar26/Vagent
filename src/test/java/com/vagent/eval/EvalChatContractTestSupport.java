@@ -3,6 +3,7 @@ package com.vagent.eval;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -29,6 +30,24 @@ public final class EvalChatContractTestSupport {
         assertTrue(root.hasNonNull("meta") && root.get("meta").isObject(), "meta must be object");
         JsonNode meta = root.get("meta");
         assertTrue(meta.hasNonNull("mode") && meta.get("mode").isTextual(), "meta.mode must be string");
+        assertTrue(meta.hasNonNull("behavior") && meta.get("behavior").isTextual(), "meta.behavior must mirror root");
+        assertEquals(root.get("behavior").asText(), meta.get("behavior").asText());
+        JsonNode rootEc = root.get("error_code");
+        boolean rootHasAttributable =
+                rootEc != null
+                        && !rootEc.isNull()
+                        && rootEc.isTextual()
+                        && !rootEc.asText().isBlank();
+        if (rootHasAttributable) {
+            assertTrue(meta.hasNonNull("error_code") && meta.get("error_code").isTextual(), "meta.error_code required");
+            assertEquals(rootEc.asText(), meta.get("error_code").asText());
+        } else {
+            assertTrue(
+                    !meta.has("error_code")
+                            || meta.get("error_code").isNull()
+                            || (meta.get("error_code").isTextual() && meta.get("error_code").asText().isBlank()),
+                    "meta.error_code must be absent when root has no attributable error_code");
+        }
         assertTrue(root.has("retrieval_hits") && root.get("retrieval_hits").isArray(), "retrieval_hits must be array");
     }
 }

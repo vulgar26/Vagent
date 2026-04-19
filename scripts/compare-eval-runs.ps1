@@ -7,10 +7,16 @@ param(
   [Parameter()][string]$BaseResultsPath,
   [Parameter()][string]$CandResultsPath,
   [int]$Limit = 500,
-  [string]$OutDir = "."
+  [string]$OutDir = ".",
+  # 在线模式：GET .../eval/runs/{id} 校验两端 dataset_id（-RequireSameDataset 时缺失字段直接失败）
+  [switch]$RequireSameDataset,
+  # 任一条「PASS -> 非 PASS」且 cand_error_code 为契约类时 exit 1（用于 hybrid/rerank A/B 门禁）
+  [switch]$StrictContractGate
 )
 
 $ErrorActionPreference = "Stop"
+
+. "$PSScriptRoot\eval-compare-contract.ps1"
 
 function Is-NonEmpty([string]$s) {
   return -not [string]::IsNullOrWhiteSpace($s)
@@ -123,6 +129,7 @@ if ($offline) {
   if (-not $EvalBase) { throw "online mode requires -EvalBase" }
   if (-not $BaseRunId) { throw "online mode requires -BaseRunId" }
   if (-not $CandRunId) { throw "online mode requires -CandRunId" }
+  Assert-EvalSameDatasetForCompare -EvalBase $EvalBase -BaseRunId $BaseRunId -CandRunId $CandRunId -RequireSameDataset:$RequireSameDataset
   $baseReport = Get-RunReport $BaseRunId
   $candReport = Get-RunReport $CandRunId
   $baseResults = Get-RunResultsAll $BaseRunId
@@ -159,6 +166,8 @@ foreach ($cid in $allCaseIds) {
   }
 }
 
+$contractRegressions = @(Get-EvalRegressionContractRows -Regressions @($regressions))
+
 $baseVerdictCounts = Count-By $baseResults "verdict"
 $candVerdictCounts = Count-By $candResults "verdict"
 $baseErrorCounts = Count-By $baseResults "error_code"
@@ -178,6 +187,8 @@ $compare = [ordered]@{
   regressions = $regressions
   improvements = $improvements
   changed = $changed
+  contract_regression_count = $contractRegressions.Count
+  contract_regressions = $contractRegressions
 }
 
 New-Item -ItemType Directory -Force -Path $OutDir | Out-Null
@@ -201,6 +212,7 @@ if ($baseReport -and $candReport) {
 $md += "- regressions: $($regressions.Count)"
 $md += "- improvements: $($improvements.Count)"
 $md += "- changed verdicts: $($changed.Count)"
+$md += "- contract regressions (subset): $($contractRegressions.Count)"
 $md += ""
 $md += "## Regressions (PASS -> non-PASS)"
 if ($regressions.Count -eq 0) {
@@ -208,6 +220,16 @@ if ($regressions.Count -eq 0) {
 } else {
   foreach ($r in $regressions) {
     $md += "- $($r.case_id): $($r.base_verdict) -> $($r.cand_verdict) (base=$($r.base_error_code) cand=$($r.cand_error_code))"
+  }
+}
+$md += ""
+$md += "## Contract regressions (PASS -> non-PASS, cand_error_code in contract set)"
+if ($contractRegressions.Count -eq 0) {
+  $md += "- (none)"
+}
+else {
+  foreach ($r in $contractRegressions) {
+    $md += "- $($r.case_id): $($r.base_verdict) -> $($r.cand_verdict) (cand_error_code=$($r.cand_error_code))"
   }
 }
 $md += ""
@@ -225,3 +247,7 @@ $md -join "`n" | Set-Content -Path $mdPath -Encoding utf8
 Write-Host "Wrote: $jsonPath"
 Write-Host "Wrote: $mdPath"
 
+if ($StrictContractGate -and $contractRegressions.Count -gt 0) {
+  Write-Host ("StrictContractGate FAIL: {0} regression(s) with contract-class cand_error_code" -f $contractRegressions.Count) -ForegroundColor Red
+  exit 1
+}

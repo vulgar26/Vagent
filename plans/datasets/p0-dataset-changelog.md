@@ -1,21 +1,21 @@
 # P0 Dataset Changelog
 
-## Day10（D 线 P0 验收）
+## 验收登记（与代码/评测对齐）
 
-- **一页结论**：`p0-d10-p0-acceptance-onepager.md`（是否过线、阻塞项、owner、粗估时间）。
+- **可复现结论与指标**：见仓库根目录 `plans/vagent-upgrade.md` 中「验收快照」与 `plans/regression-baseline-convention.md` 登记段落。
 
 ## v0.2 (2026-04-11)
 
 ### Changed
 
-- **Day9（可判定性）**：2 条 `attack/*` 的 `expected_behavior` 从 `answer` 调整为 `clarify`（见 `p0-day9-case-revisions.md`）。
+- **可判定性**：2 条 `attack/*` 的 `expected_behavior` 从 `answer` 调整为 `clarify`（PR/合并说明中保留 case 列表即可）。
 - **标签**：`p0_v0_contract_shape_001/002` 增加 `meta/contract`，便于契约类题分桶。
 
 ### Notes
 
 - 与 **v0.1** 的 **同 `case_id` 期望** 有差异；compare 须注明 dataset 版本。
 
-## Dataset version policy（版本号升级策略，Day7）
+## Dataset version policy（版本号升级策略）
 
 ### 版本号形式
 
@@ -38,7 +38,7 @@
 
 ---
 
-## Changelog entry examples（变更记录样例，Day7）
+## Changelog entry examples（变更记录样例）
 
 以下为**写法模板**，不是真实已发生的条目（真实变更请按 `v0.x` 小节追加）。
 
@@ -70,9 +70,8 @@
 
 ### Changed
 
-- **Day8**：新增 `regression-daily-template.md`（固定字段日报模板）与 `regression-daily-2026-04-11.md`（示例满填）。  
-- **Day6（补做）**：新增 `p0-day6-regression-assignment.md`（按 `error_code` 分锅 + owner）与 `export-eval-run-failures.ps1`（从 eval 导出 FAIL 明细）。  
-- **Day7**：补充「Dataset version policy」与 add/modify/delete **changelog 样例**（见上文）。
+- **运维脚本**：新增 `export-eval-run-failures.ps1`（从 eval 导出 FAIL 明细）。  
+- **文档**：补充「Dataset version policy」与 add/modify/delete **changelog 样例**（见上文）。
 
 ### Added
 

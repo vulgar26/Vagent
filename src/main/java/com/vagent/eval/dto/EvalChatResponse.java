@@ -27,8 +27,14 @@ public class EvalChatResponse {
      */
     private String errorCode;
 
+    /**
+     * 与 vagent-eval 契约对齐：{@code expected_behavior=tool} 时须给出 {@code required/used/succeeded} 等字段。
+     */
+    private Tool tool;
+
     public EvalChatResponse() {}
 
+    /** 兼容旧调用方：无 {@code tool} 字段时传 {@code null}。 */
     public EvalChatResponse(
             String answer,
             String behavior,
@@ -38,6 +44,19 @@ public class EvalChatResponse {
             List<Source> sources,
             List<RetrievalHit> retrievalHits,
             String errorCode) {
+        this(answer, behavior, latencyMs, capabilities, meta, sources, retrievalHits, errorCode, null);
+    }
+
+    public EvalChatResponse(
+            String answer,
+            String behavior,
+            long latencyMs,
+            Capabilities capabilities,
+            Map<String, Object> meta,
+            List<Source> sources,
+            List<RetrievalHit> retrievalHits,
+            String errorCode,
+            Tool tool) {
         this.answer = answer;
         this.behavior = behavior;
         this.latencyMs = latencyMs;
@@ -46,6 +65,7 @@ public class EvalChatResponse {
         this.sources = sources;
         this.retrievalHits = retrievalHits;
         this.errorCode = errorCode;
+        this.tool = tool;
     }
 
     public String getAnswer() {
@@ -110,6 +130,83 @@ public class EvalChatResponse {
 
     public void setErrorCode(String errorCode) {
         this.errorCode = errorCode;
+    }
+
+    public Tool getTool() {
+        return tool;
+    }
+
+    public void setTool(Tool tool) {
+        this.tool = tool;
+    }
+
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public static class Tool {
+        private boolean required;
+        private boolean used;
+        private boolean succeeded;
+        private String name;
+        private String outcome;
+        private Long latencyMs;
+
+        public Tool() {}
+
+        public Tool(boolean required, boolean used, boolean succeeded, String name, String outcome, Long latencyMs) {
+            this.required = required;
+            this.used = used;
+            this.succeeded = succeeded;
+            this.name = name;
+            this.outcome = outcome;
+            this.latencyMs = latencyMs;
+        }
+
+        public boolean isRequired() {
+            return required;
+        }
+
+        public void setRequired(boolean required) {
+            this.required = required;
+        }
+
+        public boolean isUsed() {
+            return used;
+        }
+
+        public void setUsed(boolean used) {
+            this.used = used;
+        }
+
+        public boolean isSucceeded() {
+            return succeeded;
+        }
+
+        public void setSucceeded(boolean succeeded) {
+            this.succeeded = succeeded;
+        }
+
+        public String getName() {
+            return name;
+        }
+
+        public void setName(String name) {
+            this.name = name;
+        }
+
+        public String getOutcome() {
+            return outcome;
+        }
+
+        public void setOutcome(String outcome) {
+            this.outcome = outcome;
+        }
+
+        public Long getLatencyMs() {
+            return latencyMs;
+        }
+
+        public void setLatencyMs(Long latencyMs) {
+            this.latencyMs = latencyMs;
+        }
     }
 
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)

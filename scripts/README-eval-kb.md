@@ -25,11 +25,15 @@ psql -U postgres -d vagent -f scripts/reset-eval-kb-for-vagent-target.sql
 
 两轮分别记 `run_id` 与 KB 策略说明，避免「一份库想同时满足 32 条」的不可达期望。
 
-## 3. 应用内门控（可选）
+## 3. 混合检索开关对比（同一 `dataset_id`）
+
+在评测服务上对**同一冻结题集**分别跑「hybrid 关 / hybrid 开」等 run，用 `scripts/compare-eval-runs.ps1` 做差分并加 **`-RequireSameDataset` + `-StrictContractGate`** 做门禁（契约类 `error_code` 不得由 PASS 恶化）。步骤与参数说明见 **`scripts/README-hybrid-rerank-ab.md`**。
+
+## 4. 应用内门控（可选）
 
 在 `application-local.yml`（勿提交密钥）可对 `vagent.eval.api` 配置：
 
 - **`low-confidence-cosine-distance-threshold`**：首条命中余弦距离 **大于** 该值则 `clarify`（距离越小越相似，需按嵌入模型调参）。
 - **`low-confidence-query-substrings`**：query 含任一子串则 `clarify`，用于对齐「这个东西」「那个项目」等指代不明问句。
 
-详见 `application-local.example.yml` 中注释示例。默认均为关闭，不改变既有单测基线。
+详见 `application-local.example.yml` 中注释示例。默认均为关闭，不改变既有单测基线。（上文「混合检索」见 §3。）
