@@ -5,10 +5,13 @@ import com.vagent.llm.LlmMessage;
 import com.vagent.llm.impl.NoopLlmClient;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.Test;
+import org.springframework.http.MediaType;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -78,5 +81,42 @@ class LlmSseStreamingBridgeTest {
                 null);
 
         assertThat(buf.toString()).isEqualTo("ab");
+    }
+
+    @Test
+    void bufferedModeDefersChunkUntilPreDoneEmitter() {
+        LlmStreamTaskRegistry reg = new LlmStreamTaskRegistry();
+        AtomicInteger chunkEventsBeforePreDone = new AtomicInteger();
+        LlmSseStreamingBridge bridge =
+                new LlmSseStreamingBridge(
+                        (request, sink) -> {
+                            sink.onChunk("a");
+                            sink.onChunk("b");
+                            sink.onComplete();
+                        },
+                        reg,
+                        new SimpleMeterRegistry());
+        String taskId = reg.registerTask("u1");
+        SseEmitter emitter = new SseEmitter(60_000L);
+        StringBuilder buf = new StringBuilder();
+        bridge.streamChatToSse(
+                emitter,
+                taskId,
+                new LlmChatRequest(List.of(new LlmMessage(LlmMessage.Role.USER, "hi")), "m"),
+                buf,
+                null,
+                (em, accumulated) -> {
+                    chunkEventsBeforePreDone.incrementAndGet();
+                    try {
+                        em.send(
+                                SseEmitter.event()
+                                        .data(Map.of("type", "chunk", "text", accumulated.toString()), MediaType.APPLICATION_JSON));
+                    } catch (Exception e) {
+                        throw new RuntimeException(e);
+                    }
+                });
+
+        assertThat(buf.toString()).isEqualTo("ab");
+        assertThat(chunkEventsBeforePreDone.get()).isEqualTo(1);
     }
 }

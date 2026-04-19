@@ -1,8 +1,27 @@
-# Quote-only 门控（评测 `POST /api/v1/eval/chat`）
+# Quote-only 门控（评测 `POST /api/v1/eval/chat` 与可选主对话 SSE）
 
 本页是 **实现语义 SSOT**：与代码 `EvalQuoteOnlyGuard`、配置 `vagent.guardrails.quote-only.*` 一致；修改判定时应同步更新本文件。
 
-## 何时生效
+## Eval：`reflection` 与 `quote_only` 的执行顺序
+
+当 **`vagent.guardrails.reflection.enabled=true`** 且请求 **`quote_only: true`** 同时满足各自前提时，`EvalChatController` **先**执行 `EvalReflectionOneShotGuard`（引用闭环、低置信超长），**仅当**根级 **`behavior` 仍为 `answer`** 时再执行 `EvalQuoteOnlyGuard`。若 reflection 已改为 `deny`/`clarify`，**不再**跑 quote-only，避免重复门控与矛盾 `meta`。
+
+## 主对话 SSE（`apply-to-sse-stream`）
+
+除 eval 接口外，主链路 **`RagStreamChatService`** 可选对齐同一套 `EvalQuoteOnlyGuard` 判定（corpus 来自当次 RAG 命中的 `RetrieveHit.content`）。
+
+附加条件（全部满足才启用缓冲门控）：
+
+1. **`vagent.guardrails.quote-only.enabled=true`**
+2. **`vagent.guardrails.quote-only.apply-to-sse-stream=true`**（`VAGENT_GUARDRAILS_QUOTE_ONLY_APPLY_TO_SSE_STREAM`）
+3. **`branch=RAG`** 且 **`retrieve_hit_count>0`** 且 corpus 非空
+
+行为说明：
+
+- 与默认「边生成边 `chunk`」不同：启用后服务端 **缓冲 LLM 全文**，再发 **首条 `type=meta`**（含检索 trace 与门控结果）与 **一条 `type=chunk`**（全文或拒答替换文案），随后 **`done`**；便于在发出任何用户可见正文前完成 quote-only。
+- **不设**按请求头单独开关，仅由配置统一控制，避免客户端随意打开缓冲模式。
+
+## 何时生效（仅评测 HTTP）
 
 同时满足：
 

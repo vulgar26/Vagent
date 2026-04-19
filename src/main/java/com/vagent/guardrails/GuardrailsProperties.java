@@ -44,6 +44,12 @@ public class GuardrailsProperties {
          */
         private String strictness = "moderate";
 
+        /**
+         * 为 true 时：主对话 SSE（{@link com.vagent.chat.RagStreamChatService}）在 RAG 有命中且走 LLM 时，
+         * 先缓冲全文再发 {@code meta+chunk}，以便与 eval 同源执行 quote-only（默认 false，避免改变既有流式体验）。
+         */
+        private boolean applyToSseStream = false;
+
         public boolean isEnabled() {
             return enabled;
         }
@@ -58,6 +64,14 @@ public class GuardrailsProperties {
 
         public void setStrictness(String strictness) {
             this.strictness = strictness != null ? strictness : "moderate";
+        }
+
+        public boolean isApplyToSseStream() {
+            return applyToSseStream;
+        }
+
+        public void setApplyToSseStream(boolean applyToSseStream) {
+            this.applyToSseStream = applyToSseStream;
         }
     }
 

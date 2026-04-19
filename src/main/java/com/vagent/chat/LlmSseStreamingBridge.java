@@ -36,6 +36,14 @@ import java.util.concurrent.atomic.AtomicBoolean;
 @Component
 public class LlmSseStreamingBridge {
 
+    /**
+     * 当 LLM 输出被服务端缓冲至全文后，在发送 {@code type=done} 之前写出 {@code meta} 与 {@code chunk}（例如 quote-only 门控后再发首帧）。
+     */
+    @FunctionalInterface
+    public interface BufferedSsePreDoneEmitter {
+        void emitAccumulated(SseEmitter emitter, StringBuilder accumulatedText) throws IOException;
+    }
+
     private final LlmClient llmClient;
     private final LlmStreamTaskRegistry taskRegistry;
     private final MeterRegistry meterRegistry;
@@ -53,6 +61,20 @@ public class LlmSseStreamingBridge {
             LlmChatRequest req,
             StringBuilder assistantAccumulator,
             Runnable onSuccessAfterDoneEvent) {
+        streamChatToSse(emitter, taskId, req, assistantAccumulator, onSuccessAfterDoneEvent, null);
+    }
+
+    /**
+     * @param bufferedPreDone 非 null 时：不在 {@link LlmStreamSink#onChunk} 中向前端推片段，仅在流正常结束后调用其写入
+     *     {@code meta}/{@code chunk}，再由本类发送 {@code done}。
+     */
+    public void streamChatToSse(
+            SseEmitter emitter,
+            String taskId,
+            LlmChatRequest req,
+            StringBuilder assistantAccumulator,
+            Runnable onSuccessAfterDoneEvent,
+            BufferedSsePreDoneEmitter bufferedPreDone) {
         Objects.requireNonNull(emitter, "emitter");
         Objects.requireNonNull(taskId, "taskId");
         Objects.requireNonNull(req, "req");
@@ -66,6 +88,8 @@ public class LlmSseStreamingBridge {
         long streamStartNs = System.nanoTime();
         AtomicBoolean streamTimerRecorded = new AtomicBoolean();
 
+        final boolean bufferUntilPreDone = bufferedPreDone != null;
+
         llmClient.streamChat(withCancel, new LlmStreamSink() {
             @Override
             public void onChunk(String text) {
@@ -74,6 +98,9 @@ public class LlmSseStreamingBridge {
                 }
                 if (assistantAccumulator != null && text != null) {
                     assistantAccumulator.append(text);
+                }
+                if (bufferUntilPreDone) {
+                    return;
                 }
                 try {
                     sendEvent(emitter, Map.of("type", "chunk", "text", text != null ? text : ""));
@@ -90,6 +117,10 @@ public class LlmSseStreamingBridge {
                         sendEvent(emitter, Map.of("type", "cancelled"));
                         recordStreamTimerOnce(streamTimerRecorded, streamStartNs, "cancelled");
                     } else {
+                        if (bufferUntilPreDone) {
+                            bufferedPreDone.emitAccumulated(
+                                    emitter, assistantAccumulator != null ? assistantAccumulator : new StringBuilder());
+                        }
                         sendEvent(emitter, Map.of("type", "done"));
                         if (onSuccessAfterDoneEvent != null) {
                             onSuccessAfterDoneEvent.run();

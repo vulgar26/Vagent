@@ -111,7 +111,7 @@ docker compose up -d
 | `vagent.mcp.*` | MCP Client 开关、URL、协议版本、**主链路允许的工具名列表** |
 | `vagent.eval.api.*` | Eval 开关、token 哈希、debug 与 IP 限制、full-answer、membership top-N 等 |
 | `vagent.guardrails.reflection.*` | Eval 路径可选的一次性门控（默认关闭） |
-| `vagent.guardrails.quote-only.*` | Eval **quote-only** 档位（`relaxed` / `moderate` / `strict`），须与请求 **`quote_only`** 同开 |
+| `vagent.guardrails.quote-only.*` | Eval **quote-only** 档位（`relaxed` / `moderate` / `strict`），须与请求 **`quote_only`** 同开；可选 **`apply-to-sse-stream`** 使主对话 SSE 缓冲全文后与 eval 同源门控 |
 
 生产建议使用 **`--spring.profiles.active=prod`**，并设置 **`VAGENT_SECURITY_JWT_SECRET`**（长度与强度满足 **`application-prod.yml`** 要求）及各类密钥。
 
@@ -138,7 +138,7 @@ docker compose up -d
 - **启用**：**`vagent.eval.api.enabled=true`**，并配置 **`vagent.eval.api.token-hash`**（明文 token 的 **SHA-256 小写 hex**；支持逗号分隔多哈希）。未启用时 **`/api/v1/eval/**`** 对外 **404**。  
 - **调试**：**`vagent.eval.api.debug-enabled=true`** 且请求 **`mode=EVAL_DEBUG`** 时，`meta` 才可能含明文 **`retrieval_hit_ids[]`**；可配合 **`allow-cidrs`**、**`trust-forwarded-headers`** 收紧。  
 - **行为**：与主线共享检索与门控；**`vagent.eval.api.full-answer-enabled=true`** 时可在通过门控后调用 **`LlmClient`** 生成正文（默认占位以降低 CI 成本与外网依赖）。  
-- **Quote-only**：服务端 **`vagent.guardrails.quote-only.enabled=true`** 且 JSON **`"quote_only": true`** 时，对 **`behavior=answer`** 做检索正文子串核对；档位与规则见 **`plans/quote-only-guardrails.md`**。  
+- **Quote-only**：服务端 **`vagent.guardrails.quote-only.enabled=true`** 且 JSON **`"quote_only": true`** 时，对 **`behavior=answer`** 做检索正文子串核对；档位、与 **reflection** 的执行顺序、以及可选 **SSE 缓冲对齐**（**`quote-only.apply-to-sse-stream`**）见 **`plans/quote-only-guardrails.md`**。  
 - **数据脚本**：**`scripts/README-eval-kb.md`**；混合检索 / rerank A/B 与 compare 契约门禁见 **`scripts/README-hybrid-rerank-ab.md`**。
 
 ---

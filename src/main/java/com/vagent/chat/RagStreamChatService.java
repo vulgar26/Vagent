@@ -8,6 +8,7 @@ import com.vagent.conversation.ConversationService;
 import com.vagent.eval.EvalApiProperties;
 import com.vagent.eval.EvalBehaviorMetaSync;
 import com.vagent.eval.EvalChatSafetyGate;
+import com.vagent.eval.EvalQuoteOnlyGuard;
 import com.vagent.kb.KnowledgeRetrieveService;
 import com.vagent.kb.RagRetrieveResult;
 import com.vagent.kb.dto.RetrieveHit;
@@ -23,6 +24,7 @@ import com.vagent.orchestration.model.RewriteResult;
 import com.vagent.rag.RagKnowledgeSystemPrompts;
 import com.vagent.rag.gate.RagPostRetrieveGate;
 import com.vagent.rag.gate.RagPostRetrieveGateSettings;
+import com.vagent.guardrails.GuardrailsProperties;
 import com.vagent.user.UserIdFormats;
 import com.vagent.mcp.client.McpClient;
 import com.vagent.mcp.config.McpProperties;
@@ -66,6 +68,9 @@ import static org.springframework.http.HttpStatus.NOT_FOUND;
  * <p><b>SSE 首帧 {@code meta} 与评测根级对齐（P1-0 收口）：</b>首条 {@code type=meta} 均经 {@link com.vagent.eval.EvalBehaviorMetaSync#applyRootToMeta}
  * 写入 {@code behavior}/{@code error_code}，与 {@link com.vagent.eval.dto.EvalChatResponse} 根级字段<strong>同值</strong>；成功走主链路 LLM 时为
  * {@code behavior=answer} 且不写 {@code error_code}（等同根级无归因码）。安全短路、检索后门控短路、意图澄清分支同理。</p>
+ *
+ * <p>可选：{@code vagent.guardrails.quote-only.enabled=true} 且 {@code apply-to-sse-stream=true} 时，RAG 有命中则先缓冲 LLM 全文，
+ * 再经 {@link EvalQuoteOnlyGuard} 与 eval 同源写 {@code meta} 后一次性 {@code chunk}（见 {@code plans/quote-only-guardrails.md}）。</p>
  */
 @Service
 public class RagStreamChatService {
@@ -89,6 +94,7 @@ public class RagStreamChatService {
     private final McpProperties mcpProperties;
     private final EvalApiProperties evalApiProperties;
     private final RagPostRetrieveGateSettings ragPostRetrieveGateSettings;
+    private final GuardrailsProperties guardrailsProperties;
 
     public RagStreamChatService(
             ConversationService conversationService,
@@ -105,6 +111,7 @@ public class RagStreamChatService {
             McpProperties mcpProperties,
             EvalApiProperties evalApiProperties,
             RagPostRetrieveGateSettings ragPostRetrieveGateSettings,
+            GuardrailsProperties guardrailsProperties,
             @Qualifier("llmStreamExecutor") Executor llmStreamExecutor) {
         this.conversationService = conversationService;
         this.messageService = messageService;
@@ -120,6 +127,7 @@ public class RagStreamChatService {
         this.mcpProperties = mcpProperties;
         this.evalApiProperties = evalApiProperties;
         this.ragPostRetrieveGateSettings = ragPostRetrieveGateSettings;
+        this.guardrailsProperties = guardrailsProperties;
         this.llmStreamExecutor = llmStreamExecutor;
     }
 
@@ -249,6 +257,7 @@ public class RagStreamChatService {
         final String toolOutcomeFinal = toolOutcome;
         final String toolErrorFinal = toolError;
         final RagRetrieveResult retrieveTraceFinal = retrieveTrace;
+        final List<RetrieveHit> ragHitsFinal = List.copyOf(hits);
         llmStreamExecutor.execute(
                 () ->
                         runAsyncStream(
@@ -263,7 +272,8 @@ public class RagStreamChatService {
                                 toolNameFinal,
                                 toolOutcomeFinal,
                                 toolErrorFinal,
-                                retrieveTraceFinal));
+                                retrieveTraceFinal,
+                                ragHitsFinal));
         return emitter;
     }
 
@@ -279,33 +289,98 @@ public class RagStreamChatService {
             String toolName,
             String toolOutcome,
             String toolError,
-            RagRetrieveResult retrieveTrace) {
+            RagRetrieveResult retrieveTrace,
+            List<RetrieveHit> ragHitsForGuard) {
         try {
             Map<String, Object> metaExtra = new LinkedHashMap<>();
             if (hitCount == 0 && ragProperties.getEmptyHitsBehavior() == EmptyHitsBehavior.ALLOW_LLM) {
                 RagPostRetrieveGate.applyZeroHitsAllowLlmMeta(metaExtra);
             }
-            EvalBehaviorMetaSync.applyRootToMeta(metaExtra, "answer", null);
-            sendMeta(
-                    emitter,
-                    taskId,
-                    hitCount,
-                    branch,
-                    toolUsed,
-                    toolName,
-                    toolOutcome,
-                    toolError,
-                    retrieveTrace,
-                    metaExtra);
+            boolean sseBufferedQuoteOnly =
+                    guardrailsProperties != null
+                            && guardrailsProperties.getQuoteOnly().isEnabled()
+                            && guardrailsProperties.getQuoteOnly().isApplyToSseStream()
+                            && ChatBranch.RAG.name().equals(branch)
+                            && hitCount > 0
+                            && ragHitsForGuard != null
+                            && !EvalQuoteOnlyGuard.corpusFromRetrieveHits(ragHitsForGuard).isEmpty();
+
+            if (!sseBufferedQuoteOnly) {
+                EvalBehaviorMetaSync.applyRootToMeta(metaExtra, "answer", null);
+                sendMeta(
+                        emitter,
+                        taskId,
+                        hitCount,
+                        branch,
+                        toolUsed,
+                        toolName,
+                        toolOutcome,
+                        toolError,
+                        retrieveTrace,
+                        metaExtra);
+            }
+
             StringBuilder assistantBuffer = new StringBuilder();
-            llmSseStreamingBridge.streamChatToSse(
-                    emitter,
-                    taskId,
-                    prepared,
-                    assistantBuffer,
-                    () ->
-                            messageService.saveAssistantMessage(
-                                    conversationId, userId, assistantBuffer.toString()));
+            if (sseBufferedQuoteOnly) {
+                String qs =
+                        guardrailsProperties.getQuoteOnly().getStrictness() != null
+                                ? guardrailsProperties.getQuoteOnly().getStrictness().trim().toLowerCase(Locale.ROOT)
+                                : "moderate";
+                llmSseStreamingBridge.streamChatToSse(
+                        emitter,
+                        taskId,
+                        prepared,
+                        assistantBuffer,
+                        () ->
+                                messageService.saveAssistantMessage(
+                                        conversationId, userId, assistantBuffer.toString()),
+                        (emitter2, buf) -> {
+                            metaExtra.put("quote_only", true);
+                            metaExtra.put("quote_only_strictness", qs);
+                            if (!metaExtra.containsKey("guardrail_triggered")) {
+                                metaExtra.put("guardrail_triggered", false);
+                            }
+                            var patchOpt =
+                                    EvalQuoteOnlyGuard.evaluate(
+                                            EvalQuoteOnlyGuard.Strictness.fromConfig(
+                                                    guardrailsProperties.getQuoteOnly().getStrictness()),
+                                            buf.toString(),
+                                            EvalQuoteOnlyGuard.corpusFromRetrieveHits(ragHitsForGuard));
+                            if (patchOpt.isPresent()) {
+                                var p = patchOpt.get();
+                                buf.setLength(0);
+                                buf.append(p.answer());
+                                metaExtra.put("guardrail_triggered", true);
+                                metaExtra.put("reflection_outcome", p.reflectionOutcome());
+                                metaExtra.put("reflection_reasons", p.reflectionReasons());
+                                EvalBehaviorMetaSync.applyRootToMeta(metaExtra, p.behavior(), p.errorCode());
+                            } else {
+                                metaExtra.put("quote_only_passed", true);
+                                EvalBehaviorMetaSync.applyRootToMeta(metaExtra, "answer", null);
+                            }
+                            sendMeta(
+                                    emitter2,
+                                    taskId,
+                                    hitCount,
+                                    branch,
+                                    toolUsed,
+                                    toolName,
+                                    toolOutcome,
+                                    toolError,
+                                    retrieveTrace,
+                                    metaExtra);
+                            sendEvent(emitter2, Map.of("type", "chunk", "text", buf.toString()));
+                        });
+            } else {
+                llmSseStreamingBridge.streamChatToSse(
+                        emitter,
+                        taskId,
+                        prepared,
+                        assistantBuffer,
+                        () ->
+                                messageService.saveAssistantMessage(
+                                        conversationId, userId, assistantBuffer.toString()));
+            }
         } catch (Exception e) {
             emitter.completeWithError(e);
         }

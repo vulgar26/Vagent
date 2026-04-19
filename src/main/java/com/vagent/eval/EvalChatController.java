@@ -301,6 +301,7 @@ public class EvalChatController {
             }
         }
 
+        // Reflection（引用/低置信）先于 quote-only：若已非 answer，不再跑 quote-only。
         if (shouldRunQuoteOnly(request, candidates, behavior)) {
             String qs =
                     guardrailsProperties.getQuoteOnly().getStrictness() != null
@@ -315,7 +316,7 @@ public class EvalChatController {
                     EvalQuoteOnlyGuard.evaluate(
                             EvalQuoteOnlyGuard.Strictness.fromConfig(guardrailsProperties.getQuoteOnly().getStrictness()),
                             answer,
-                            corpusFromCandidates(candidates));
+                            EvalQuoteOnlyGuard.corpusFromRetrieveHits(candidates));
             if (quotePatch.isPresent()) {
                 EvalReflectionOneShotGuard.Patch p = quotePatch.get();
                 answer = p.answer();
@@ -663,16 +664,6 @@ public class EvalChatController {
             return false;
         }
         return true;
-    }
-
-    private static List<String> corpusFromCandidates(List<RetrieveHit> candidates) {
-        if (candidates == null || candidates.isEmpty()) {
-            return List.of();
-        }
-        return candidates.stream()
-                .map(RetrieveHit::getContent)
-                .filter(c -> c != null && !c.isBlank())
-                .toList();
     }
 
     private static Set<String> allowedHitIdsFromCandidates(List<RetrieveHit> candidates) {

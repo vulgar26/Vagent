@@ -1,5 +1,7 @@
 package com.vagent.eval;
 
+import com.vagent.kb.dto.RetrieveHit;
+
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
@@ -184,5 +186,16 @@ public final class EvalQuoteOnlyGuard {
             }
         }
         return false;
+    }
+
+    /** 与 {@code EvalChatController} / SSE 主链路共用：从检索候选取正文组成 quote-only corpus。 */
+    public static List<String> corpusFromRetrieveHits(List<RetrieveHit> candidates) {
+        if (candidates == null || candidates.isEmpty()) {
+            return List.of();
+        }
+        return candidates.stream()
+                .map(RetrieveHit::getContent)
+                .filter(c -> c != null && !c.isBlank())
+                .toList();
     }
 }

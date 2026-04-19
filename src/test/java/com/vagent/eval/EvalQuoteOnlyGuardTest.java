@@ -1,5 +1,6 @@
 package com.vagent.eval;
 
+import com.vagent.kb.dto.RetrieveHit;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -77,5 +78,13 @@ class EvalQuoteOnlyGuardTest {
                 .isEqualTo(EvalQuoteOnlyGuard.Strictness.MODERATE);
         assertThat(EvalQuoteOnlyGuard.Strictness.fromConfig("RELAXED"))
                 .isEqualTo(EvalQuoteOnlyGuard.Strictness.RELAXED);
+    }
+
+    @Test
+    void corpusFromRetrieveHits_skipsBlankContent() {
+        RetrieveHit h = new RetrieveHit();
+        h.setContent("  alpha  ");
+        assertThat(EvalQuoteOnlyGuard.corpusFromRetrieveHits(List.of(h, null))).containsExactly("  alpha  ");
+        assertThat(EvalQuoteOnlyGuard.corpusFromRetrieveHits(List.of())).isEmpty();
     }
 }
