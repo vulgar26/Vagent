@@ -3,6 +3,7 @@ package com.vagent.eval;
 import com.vagent.chat.rag.RagProperties;
 import com.vagent.eval.dto.EvalChatRequest;
 import com.vagent.eval.dto.EvalChatResponse;
+import com.vagent.eval.evidence.EvidenceMapExtractor;
 import com.vagent.kb.KnowledgeRetrieveService;
 import com.vagent.kb.RagRetrieveResult;
 import com.vagent.kb.dto.RetrieveHit;
@@ -22,7 +23,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Locale;
-import java.util.LinkedHashSet;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -30,8 +30,6 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 import com.vagent.chat.rag.EmptyHitsBehavior;
 import com.vagent.guardrails.GuardrailsProperties;
@@ -355,7 +353,7 @@ public class EvalChatController {
         List<EvalChatResponse.EvidenceMapItem> evidenceMap = List.of();
         boolean evidenceMapRequired = Boolean.TRUE.equals(request.getRequiresCitations());
         if (evidenceMapRequired && "answer".equals(behavior)) {
-            evidenceMap = buildEvidenceMap(answer, sources);
+            evidenceMap = EvidenceMapExtractor.buildEvidenceMap(answer, sources);
             if (evidenceMap.isEmpty()) {
                 // P1-S1：requires_citations=true 时必须提供可规则验证的 evidence_map，否则视为不被证据支撑。
                 behavior = "deny";
@@ -874,239 +872,6 @@ public class EvalChatController {
                 new EvalChatResponse.StreamingFlag(false),
                 new EvalChatResponse.GuardrailsFlag(quoteOnlyOn, true, reflectionOn)
         );
-    }
-
-    private static final Pattern ANSWER_NUMERIC = Pattern.compile("\\d{1,3}(?:,\\d{3})*(?:\\.\\d+)?");
-    private static final Pattern ANSWER_DATE_YMD =
-            Pattern.compile("(\\d{4})[-/](\\d{1,2})[-/](\\d{1,2})");
-    private static final Pattern ANSWER_DATE_CN =
-            Pattern.compile("(\\d{4})年(\\d{1,2})月(\\d{1,2})日");
-    /**
-     * P1-S1 enum（最小版）：全大写/数字/下划线 token（例如 RAIN、NO_RAIN、LEVEL_1）。
-     * 规则校验时要求该 token 能在 snippet 中命中（大小写不敏感）。并为常见业务枚举（如 WEATHER）提供关键词表支撑。
-     */
-    private static final Pattern ANSWER_ENUM_TOKEN = Pattern.compile("\\b[A-Z][A-Z0-9_]{2,}\\b");
-    private static final Pattern WORD_RAIN = Pattern.compile("\\brain\\b", Pattern.CASE_INSENSITIVE);
-    private static final Pattern WORD_DRY = Pattern.compile("\\bdry\\b", Pattern.CASE_INSENSITIVE);
-    private static final Pattern WORD_PRECIPITATION = Pattern.compile("\\bprecipitation\\b", Pattern.CASE_INSENSITIVE);
-    private static final Pattern WORD_RAINING = Pattern.compile("\\braining\\b", Pattern.CASE_INSENSITIVE);
-    private static final Pattern PHRASE_NO_RAIN = Pattern.compile("\\bno\\s+rain\\b", Pattern.CASE_INSENSITIVE);
-
-    // P1-S1 enum 关键词表（最小可控版本）：WEATHER
-    private static final List<String> WEATHER_RAIN_CN = List.of("下雨", "有雨", "降雨", "降水");
-    private static final List<String> WEATHER_NO_RAIN_CN = List.of("无雨", "不下雨");
-
-    private static List<EvalChatResponse.EvidenceMapItem> buildEvidenceMap(
-            String answer, List<EvalChatResponse.Source> sources) {
-        if (answer == null || answer.isBlank() || sources == null || sources.isEmpty()) {
-            return List.of();
-        }
-        LinkedHashSet<EvalChatResponse.EvidenceMapItem> out = new LinkedHashSet<>();
-        List<EvalChatResponse.Source> safeSources =
-                sources.stream().filter(s -> s != null && s.getId() != null && !s.getId().isBlank()).toList();
-
-        // numeric claims
-        Matcher nm = ANSWER_NUMERIC.matcher(answer);
-        while (nm.find() && out.size() < 8) {
-            String raw = nm.group();
-            String norm = normalizeNumeric(raw);
-            if (norm.isBlank()) {
-                continue;
-            }
-            List<String> supporting =
-                    safeSources.stream()
-                            .filter(s -> snippetContainsNumeric(s.getSnippet(), norm))
-                            .map(EvalChatResponse.Source::getId)
-                            .toList();
-            if (!supporting.isEmpty()) {
-                out.add(new EvalChatResponse.EvidenceMapItem("numeric", norm, null, supporting, null));
-            }
-        }
-
-        // date claims (ISO)
-        for (Pattern p : List.of(ANSWER_DATE_YMD, ANSWER_DATE_CN)) {
-            Matcher dm = p.matcher(answer);
-            while (dm.find() && out.size() < 8) {
-                String iso = toIsoDate(dm.group(1), dm.group(2), dm.group(3));
-                if (iso == null) {
-                    continue;
-                }
-                List<String> supporting =
-                        safeSources.stream()
-                                .filter(s -> snippetContainsDate(s.getSnippet(), iso))
-                                .map(EvalChatResponse.Source::getId)
-                                .toList();
-                if (!supporting.isEmpty()) {
-                    out.add(new EvalChatResponse.EvidenceMapItem("date", iso, null, supporting, null));
-                }
-            }
-        }
-
-        // enum claims (P1): token-based + WEATHER keyword-based extraction
-        for (String enumValue : extractEnumClaims(answer)) {
-            if (out.size() >= 8) {
-                break;
-            }
-            List<String> supporting =
-                    safeSources.stream()
-                            .filter(s -> snippetSupportsEnum(s.getSnippet(), enumValue))
-                            .map(EvalChatResponse.Source::getId)
-                            .toList();
-            if (!supporting.isEmpty()) {
-                out.add(new EvalChatResponse.EvidenceMapItem("enum", enumValue, null, supporting, null));
-            }
-        }
-        return List.copyOf(out);
-    }
-
-    private static String normalizeNumeric(String raw) {
-        if (raw == null) {
-            return "";
-        }
-        String s = raw.replace(",", "").trim();
-        // avoid mapping trivial single-digit noise
-        if (s.length() <= 1) {
-            return "";
-        }
-        return s;
-    }
-
-    private static boolean snippetContainsNumeric(String snippet, String numericNorm) {
-        if (snippet == null || snippet.isBlank() || numericNorm == null || numericNorm.isBlank()) {
-            return false;
-        }
-        // Simple normalization: remove commas in snippet before contains.
-        return snippet.replace(",", "").contains(numericNorm);
-    }
-
-    private static boolean snippetContainsDate(String snippet, String isoDate) {
-        if (snippet == null || snippet.isBlank() || isoDate == null || isoDate.isBlank()) {
-            return false;
-        }
-        if (snippet.contains(isoDate)) {
-            return true;
-        }
-        // accept YYYY/MM/DD or YYYY年M月D日 variants
-        String[] parts = isoDate.split("-");
-        if (parts.length != 3) {
-            return false;
-        }
-        String y = parts[0];
-        String m = String.valueOf(Integer.parseInt(parts[1]));
-        String d = String.valueOf(Integer.parseInt(parts[2]));
-        return snippet.contains(y + "/" + m + "/" + d) || snippet.contains(y + "年" + m + "月" + d + "日");
-    }
-
-    private static String normalizeEnumToken(String raw) {
-        if (raw == null) {
-            return "";
-        }
-        String s = raw.trim();
-        // guard against extremely short/noisy tokens
-        if (s.length() < 3) {
-            return "";
-        }
-        return s;
-    }
-
-    private static boolean snippetContainsEnum(String snippet, String enumToken) {
-        if (snippet == null || snippet.isBlank() || enumToken == null || enumToken.isBlank()) {
-            return false;
-        }
-        return snippet.toUpperCase(Locale.ROOT).contains(enumToken.toUpperCase(Locale.ROOT));
-    }
-
-    private static List<String> extractEnumClaims(String answer) {
-        if (answer == null || answer.isBlank()) {
-            return List.of();
-        }
-        LinkedHashSet<String> out = new LinkedHashSet<>();
-
-        // 1) explicit enum tokens (e.g. RAIN)
-        Matcher em = ANSWER_ENUM_TOKEN.matcher(answer);
-        while (em.find() && out.size() < 8) {
-            String norm = normalizeEnumToken(em.group());
-            if (!norm.isBlank()) {
-                out.add(norm);
-            }
-        }
-
-        // 2) WEATHER domain (keyword-based) — order matters: detect NO_RAIN before RAIN to avoid "无雨" containing "雨"
-        String a = answer;
-        if (matchesAnyWeatherNoRain(a)) {
-            out.add("NO_RAIN");
-        } else if (matchesAnyWeatherRain(a)) {
-            out.add("RAIN");
-        }
-
-        return List.copyOf(out);
-    }
-
-    private static boolean snippetSupportsEnum(String snippet, String enumValue) {
-        if (snippetContainsEnum(snippet, enumValue)) {
-            return true;
-        }
-        if ("RAIN".equals(enumValue)) {
-            if (snippetMatchesAny(snippet, WEATHER_RAIN_CN)) {
-                return true;
-            }
-            return WORD_RAIN.matcher(snippet).find()
-                    || WORD_RAINING.matcher(snippet).find()
-                    || WORD_PRECIPITATION.matcher(snippet).find();
-        }
-        if ("NO_RAIN".equals(enumValue)) {
-            if (snippetMatchesAny(snippet, WEATHER_NO_RAIN_CN)) {
-                return true;
-            }
-            return PHRASE_NO_RAIN.matcher(snippet).find() || WORD_DRY.matcher(snippet).find();
-        }
-        return false;
-    }
-
-    private static boolean matchesAnyWeatherRain(String text) {
-        if (text == null || text.isBlank()) {
-            return false;
-        }
-        if (snippetMatchesAny(text, WEATHER_RAIN_CN)) {
-            return true;
-        }
-        return WORD_RAIN.matcher(text).find() || WORD_RAINING.matcher(text).find() || WORD_PRECIPITATION.matcher(text).find();
-    }
-
-    private static boolean matchesAnyWeatherNoRain(String text) {
-        if (text == null || text.isBlank()) {
-            return false;
-        }
-        if (snippetMatchesAny(text, WEATHER_NO_RAIN_CN)) {
-            return true;
-        }
-        return PHRASE_NO_RAIN.matcher(text).find() || WORD_DRY.matcher(text).find();
-    }
-
-    private static boolean snippetMatchesAny(String text, List<String> keywords) {
-        if (text == null || text.isBlank() || keywords == null || keywords.isEmpty()) {
-            return false;
-        }
-        for (String k : keywords) {
-            if (k != null && !k.isBlank() && text.contains(k)) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    private static String toIsoDate(String yyyy, String mm, String dd) {
-        try {
-            int y = Integer.parseInt(yyyy);
-            int m = Integer.parseInt(mm);
-            int d = Integer.parseInt(dd);
-            if (y < 1970 || m < 1 || m > 12 || d < 1 || d > 31) {
-                return null;
-            }
-            return String.format(Locale.ROOT, "%04d-%02d-%02d", y, m, d);
-        } catch (Exception e) {
-            return null;
-        }
     }
 
     private boolean toolsEffectiveSupported(EvalChatRequest request) {

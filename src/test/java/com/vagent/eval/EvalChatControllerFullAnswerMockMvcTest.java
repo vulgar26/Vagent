@@ -185,6 +185,54 @@ class EvalChatControllerFullAnswerMockMvcTest {
                 .andExpect(jsonPath("$.evidence_map[0].source_ids[0]").value("chunk-cn-rain"));
     }
 
+    @Test
+    void transportEnum_train_fromChineseAnswer_supportedByEnglishSnippet() throws Exception {
+        when(knowledgeRetrieveService.searchForRag(any(UUID.class), any(String.class), any(RagProperties.class)))
+                .thenReturn(RagRetrieveResult.vectorOnly(singleHitEnumTrainOnly()));
+
+        String q = "我想坐高铁";
+        String body =
+                """
+                {"query":"%s","mode":"EVAL","requires_citations":true}
+                """
+                        .formatted(q);
+
+        mockMvc.perform(
+                        post("/api/v1/eval/chat")
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .header("X-Eval-Token", TOKEN_PLAINTEXT)
+                                .content(body))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.behavior").value("answer"))
+                .andExpect(jsonPath("$.evidence_map[0].claim_type").value("enum"))
+                .andExpect(jsonPath("$.evidence_map[0].claim_value").value("TRAIN"))
+                .andExpect(jsonPath("$.evidence_map[0].source_ids[0]").value("chunk-train"));
+    }
+
+    @Test
+    void riskEnum_high_fromEnglishAnswer_supportedByChineseSnippet() throws Exception {
+        when(knowledgeRetrieveService.searchForRag(any(UUID.class), any(String.class), any(RagProperties.class)))
+                .thenReturn(RagRetrieveResult.vectorOnly(singleHitEnumHighRiskOnly()));
+
+        String q = "risk is HIGH";
+        String body =
+                """
+                {"query":"%s","mode":"EVAL","requires_citations":true}
+                """
+                        .formatted(q);
+
+        mockMvc.perform(
+                        post("/api/v1/eval/chat")
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .header("X-Eval-Token", TOKEN_PLAINTEXT)
+                                .content(body))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.behavior").value("answer"))
+                .andExpect(jsonPath("$.evidence_map[0].claim_type").value("enum"))
+                .andExpect(jsonPath("$.evidence_map[0].claim_value").value("HIGH"))
+                .andExpect(jsonPath("$.evidence_map[0].source_ids[0]").value("chunk-high-risk"));
+    }
+
     private static List<RetrieveHit> singleHit() {
         RetrieveHit h = new RetrieveHit();
         h.setChunkId("chunk-a");
@@ -226,6 +274,24 @@ class EvalChatControllerFullAnswerMockMvcTest {
         h.setChunkId("chunk-cn-rain");
         h.setDocumentId("doc-cn-rain");
         h.setContent("天气预报：有降雨");
+        h.setDistance(0.05);
+        return new ArrayList<>(List.of(h));
+    }
+
+    private static List<RetrieveHit> singleHitEnumTrainOnly() {
+        RetrieveHit h = new RetrieveHit();
+        h.setChunkId("chunk-train");
+        h.setDocumentId("doc-train");
+        h.setContent("recommended transport: train");
+        h.setDistance(0.05);
+        return new ArrayList<>(List.of(h));
+    }
+
+    private static List<RetrieveHit> singleHitEnumHighRiskOnly() {
+        RetrieveHit h = new RetrieveHit();
+        h.setChunkId("chunk-high-risk");
+        h.setDocumentId("doc-high-risk");
+        h.setContent("结论：高风险");
         h.setDistance(0.05);
         return new ArrayList<>(List.of(h));
     }
