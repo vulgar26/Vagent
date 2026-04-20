@@ -133,6 +133,58 @@ class EvalChatControllerFullAnswerMockMvcTest {
                 .andExpect(jsonPath("$.evidence_map[0].source_ids[0]").value("chunk-enum"));
     }
 
+    @Test
+    void weatherEnum_fromChineseAnswer_supportedByEnglishSnippetKeyword() throws Exception {
+        when(knowledgeRetrieveService.searchForRag(any(UUID.class), any(String.class), any(RagProperties.class)))
+                .thenReturn(RagRetrieveResult.vectorOnly(singleHitEnumPrecipitationOnly()));
+
+        String q = "今天会下雨";
+        String body =
+                """
+                {"query":"%s","mode":"EVAL","requires_citations":true}
+                """
+                        .formatted(q);
+
+        mockMvc.perform(
+                        post("/api/v1/eval/chat")
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .header("X-Eval-Token", TOKEN_PLAINTEXT)
+                                .content(body))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.behavior").value("answer"))
+                .andExpect(jsonPath("$.evidence_map").isArray())
+                .andExpect(jsonPath("$.evidence_map.length()").value(org.hamcrest.Matchers.greaterThanOrEqualTo(1)))
+                .andExpect(jsonPath("$.evidence_map[0].claim_type").value("enum"))
+                .andExpect(jsonPath("$.evidence_map[0].claim_value").value("RAIN"))
+                .andExpect(jsonPath("$.evidence_map[0].source_ids[0]").value("chunk-precip"));
+    }
+
+    @Test
+    void weatherEnum_fromEnglishToken_supportedByChineseSnippetKeyword() throws Exception {
+        when(knowledgeRetrieveService.searchForRag(any(UUID.class), any(String.class), any(RagProperties.class)))
+                .thenReturn(RagRetrieveResult.vectorOnly(singleHitEnumChineseRainOnly()));
+
+        String q = "weather is RAIN";
+        String body =
+                """
+                {"query":"%s","mode":"EVAL","requires_citations":true}
+                """
+                        .formatted(q);
+
+        mockMvc.perform(
+                        post("/api/v1/eval/chat")
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .header("X-Eval-Token", TOKEN_PLAINTEXT)
+                                .content(body))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.behavior").value("answer"))
+                .andExpect(jsonPath("$.evidence_map").isArray())
+                .andExpect(jsonPath("$.evidence_map.length()").value(org.hamcrest.Matchers.greaterThanOrEqualTo(1)))
+                .andExpect(jsonPath("$.evidence_map[0].claim_type").value("enum"))
+                .andExpect(jsonPath("$.evidence_map[0].claim_value").value("RAIN"))
+                .andExpect(jsonPath("$.evidence_map[0].source_ids[0]").value("chunk-cn-rain"));
+    }
+
     private static List<RetrieveHit> singleHit() {
         RetrieveHit h = new RetrieveHit();
         h.setChunkId("chunk-a");
@@ -156,6 +208,24 @@ class EvalChatControllerFullAnswerMockMvcTest {
         h.setChunkId("chunk-enum");
         h.setDocumentId("doc-enum");
         h.setContent("forecast: RAIN");
+        h.setDistance(0.05);
+        return new ArrayList<>(List.of(h));
+    }
+
+    private static List<RetrieveHit> singleHitEnumPrecipitationOnly() {
+        RetrieveHit h = new RetrieveHit();
+        h.setChunkId("chunk-precip");
+        h.setDocumentId("doc-precip");
+        h.setContent("forecast: precipitation expected");
+        h.setDistance(0.05);
+        return new ArrayList<>(List.of(h));
+    }
+
+    private static List<RetrieveHit> singleHitEnumChineseRainOnly() {
+        RetrieveHit h = new RetrieveHit();
+        h.setChunkId("chunk-cn-rain");
+        h.setDocumentId("doc-cn-rain");
+        h.setContent("天气预报：有降雨");
         h.setDistance(0.05);
         return new ArrayList<>(List.of(h));
     }

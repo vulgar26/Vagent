@@ -883,9 +883,18 @@ public class EvalChatController {
             Pattern.compile("(\\d{4})年(\\d{1,2})月(\\d{1,2})日");
     /**
      * P1-S1 enum（最小版）：全大写/数字/下划线 token（例如 RAIN、NO_RAIN、LEVEL_1）。
-     * 规则校验时要求该 token 能在 snippet 中命中（大小写不敏感）。
+     * 规则校验时要求该 token 能在 snippet 中命中（大小写不敏感）。并为常见业务枚举（如 WEATHER）提供关键词表支撑。
      */
     private static final Pattern ANSWER_ENUM_TOKEN = Pattern.compile("\\b[A-Z][A-Z0-9_]{2,}\\b");
+    private static final Pattern WORD_RAIN = Pattern.compile("\\brain\\b", Pattern.CASE_INSENSITIVE);
+    private static final Pattern WORD_DRY = Pattern.compile("\\bdry\\b", Pattern.CASE_INSENSITIVE);
+    private static final Pattern WORD_PRECIPITATION = Pattern.compile("\\bprecipitation\\b", Pattern.CASE_INSENSITIVE);
+    private static final Pattern WORD_RAINING = Pattern.compile("\\braining\\b", Pattern.CASE_INSENSITIVE);
+    private static final Pattern PHRASE_NO_RAIN = Pattern.compile("\\bno\\s+rain\\b", Pattern.CASE_INSENSITIVE);
+
+    // P1-S1 enum 关键词表（最小可控版本）：WEATHER
+    private static final List<String> WEATHER_RAIN_CN = List.of("下雨", "有雨", "降雨", "降水");
+    private static final List<String> WEATHER_NO_RAIN_CN = List.of("无雨", "不下雨");
 
     private static List<EvalChatResponse.EvidenceMapItem> buildEvidenceMap(
             String answer, List<EvalChatResponse.Source> sources) {
@@ -933,21 +942,18 @@ public class EvalChatController {
             }
         }
 
-        // enum claims (minimal)
-        Matcher em = ANSWER_ENUM_TOKEN.matcher(answer);
-        while (em.find() && out.size() < 8) {
-            String token = em.group();
-            String norm = normalizeEnumToken(token);
-            if (norm.isBlank()) {
-                continue;
+        // enum claims (P1): token-based + WEATHER keyword-based extraction
+        for (String enumValue : extractEnumClaims(answer)) {
+            if (out.size() >= 8) {
+                break;
             }
             List<String> supporting =
                     safeSources.stream()
-                            .filter(s -> snippetContainsEnum(s.getSnippet(), norm))
+                            .filter(s -> snippetSupportsEnum(s.getSnippet(), enumValue))
                             .map(EvalChatResponse.Source::getId)
                             .toList();
             if (!supporting.isEmpty()) {
-                out.add(new EvalChatResponse.EvidenceMapItem("enum", norm, null, supporting, null));
+                out.add(new EvalChatResponse.EvidenceMapItem("enum", enumValue, null, supporting, null));
             }
         }
         return List.copyOf(out);
@@ -1008,6 +1014,85 @@ public class EvalChatController {
             return false;
         }
         return snippet.toUpperCase(Locale.ROOT).contains(enumToken.toUpperCase(Locale.ROOT));
+    }
+
+    private static List<String> extractEnumClaims(String answer) {
+        if (answer == null || answer.isBlank()) {
+            return List.of();
+        }
+        LinkedHashSet<String> out = new LinkedHashSet<>();
+
+        // 1) explicit enum tokens (e.g. RAIN)
+        Matcher em = ANSWER_ENUM_TOKEN.matcher(answer);
+        while (em.find() && out.size() < 8) {
+            String norm = normalizeEnumToken(em.group());
+            if (!norm.isBlank()) {
+                out.add(norm);
+            }
+        }
+
+        // 2) WEATHER domain (keyword-based) — order matters: detect NO_RAIN before RAIN to avoid "无雨" containing "雨"
+        String a = answer;
+        if (matchesAnyWeatherNoRain(a)) {
+            out.add("NO_RAIN");
+        } else if (matchesAnyWeatherRain(a)) {
+            out.add("RAIN");
+        }
+
+        return List.copyOf(out);
+    }
+
+    private static boolean snippetSupportsEnum(String snippet, String enumValue) {
+        if (snippetContainsEnum(snippet, enumValue)) {
+            return true;
+        }
+        if ("RAIN".equals(enumValue)) {
+            if (snippetMatchesAny(snippet, WEATHER_RAIN_CN)) {
+                return true;
+            }
+            return WORD_RAIN.matcher(snippet).find()
+                    || WORD_RAINING.matcher(snippet).find()
+                    || WORD_PRECIPITATION.matcher(snippet).find();
+        }
+        if ("NO_RAIN".equals(enumValue)) {
+            if (snippetMatchesAny(snippet, WEATHER_NO_RAIN_CN)) {
+                return true;
+            }
+            return PHRASE_NO_RAIN.matcher(snippet).find() || WORD_DRY.matcher(snippet).find();
+        }
+        return false;
+    }
+
+    private static boolean matchesAnyWeatherRain(String text) {
+        if (text == null || text.isBlank()) {
+            return false;
+        }
+        if (snippetMatchesAny(text, WEATHER_RAIN_CN)) {
+            return true;
+        }
+        return WORD_RAIN.matcher(text).find() || WORD_RAINING.matcher(text).find() || WORD_PRECIPITATION.matcher(text).find();
+    }
+
+    private static boolean matchesAnyWeatherNoRain(String text) {
+        if (text == null || text.isBlank()) {
+            return false;
+        }
+        if (snippetMatchesAny(text, WEATHER_NO_RAIN_CN)) {
+            return true;
+        }
+        return PHRASE_NO_RAIN.matcher(text).find() || WORD_DRY.matcher(text).find();
+    }
+
+    private static boolean snippetMatchesAny(String text, List<String> keywords) {
+        if (text == null || text.isBlank() || keywords == null || keywords.isEmpty()) {
+            return false;
+        }
+        for (String k : keywords) {
+            if (k != null && !k.isBlank() && text.contains(k)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static String toIsoDate(String yyyy, String mm, String dd) {
