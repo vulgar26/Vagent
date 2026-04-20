@@ -15,6 +15,10 @@ public class EvalChatResponse {
     private Capabilities capabilities;
     private Map<String, Object> meta;
     private List<Source> sources;
+    /**
+     * P1-S1：回答→证据映射（规则提取器生成，禁止自由文本漂移）。
+     */
+    private List<EvidenceMapItem> evidenceMap;
 
     /**
      * 评测 citation membership（vagent-eval Day6+）用的根级命中列表；与 {@link #sources} 同源候选口径，元素至少含 {@code id}。
@@ -44,7 +48,7 @@ public class EvalChatResponse {
             List<Source> sources,
             List<RetrievalHit> retrievalHits,
             String errorCode) {
-        this(answer, behavior, latencyMs, capabilities, meta, sources, retrievalHits, errorCode, null);
+        this(answer, behavior, latencyMs, capabilities, meta, sources, retrievalHits, errorCode, null, null);
     }
 
     public EvalChatResponse(
@@ -56,7 +60,8 @@ public class EvalChatResponse {
             List<Source> sources,
             List<RetrievalHit> retrievalHits,
             String errorCode,
-            Tool tool) {
+            Tool tool,
+            List<EvidenceMapItem> evidenceMap) {
         this.answer = answer;
         this.behavior = behavior;
         this.latencyMs = latencyMs;
@@ -66,6 +71,7 @@ public class EvalChatResponse {
         this.retrievalHits = retrievalHits;
         this.errorCode = errorCode;
         this.tool = tool;
+        this.evidenceMap = evidenceMap;
     }
 
     public String getAnswer() {
@@ -114,6 +120,14 @@ public class EvalChatResponse {
 
     public void setSources(List<Source> sources) {
         this.sources = sources;
+    }
+
+    public List<EvidenceMapItem> getEvidenceMap() {
+        return evidenceMap;
+    }
+
+    public void setEvidenceMap(List<EvidenceMapItem> evidenceMap) {
+        this.evidenceMap = evidenceMap;
     }
 
     public List<RetrievalHit> getRetrievalHits() {
@@ -245,6 +259,70 @@ public class EvalChatResponse {
 
         public void setSnippet(String snippet) {
             this.snippet = snippet;
+        }
+    }
+
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public static class EvidenceMapItem {
+        private String claimType;
+        private String claimValue;
+        private String claimPath;
+        private List<String> sourceIds;
+        private Double confidence;
+
+        public EvidenceMapItem() {}
+
+        public EvidenceMapItem(
+                String claimType,
+                String claimValue,
+                String claimPath,
+                List<String> sourceIds,
+                Double confidence) {
+            this.claimType = claimType;
+            this.claimValue = claimValue;
+            this.claimPath = claimPath;
+            this.sourceIds = sourceIds;
+            this.confidence = confidence;
+        }
+
+        public String getClaimType() {
+            return claimType;
+        }
+
+        public void setClaimType(String claimType) {
+            this.claimType = claimType;
+        }
+
+        public String getClaimValue() {
+            return claimValue;
+        }
+
+        public void setClaimValue(String claimValue) {
+            this.claimValue = claimValue;
+        }
+
+        public String getClaimPath() {
+            return claimPath;
+        }
+
+        public void setClaimPath(String claimPath) {
+            this.claimPath = claimPath;
+        }
+
+        public List<String> getSourceIds() {
+            return sourceIds;
+        }
+
+        public void setSourceIds(List<String> sourceIds) {
+            this.sourceIds = sourceIds;
+        }
+
+        public Double getConfidence() {
+            return confidence;
+        }
+
+        public void setConfidence(Double confidence) {
+            this.confidence = confidence;
         }
     }
 

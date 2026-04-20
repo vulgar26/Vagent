@@ -22,6 +22,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Locale;
+import java.util.LinkedHashSet;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -29,6 +30,8 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import com.vagent.chat.rag.EmptyHitsBehavior;
 import com.vagent.guardrails.GuardrailsProperties;
@@ -353,6 +356,11 @@ public class EvalChatController {
 
         long latencyMs = (System.nanoTime() - startNs) / 1_000_000L;
 
+        List<EvalChatResponse.EvidenceMapItem> evidenceMap = List.of();
+        if (Boolean.TRUE.equals(request.getRequiresCitations()) && "answer".equals(behavior)) {
+            evidenceMap = buildEvidenceMap(answer, sources);
+        }
+
         return new EvalChatResponse(
                 answer,
                 behavior,
@@ -361,7 +369,9 @@ public class EvalChatController {
                 meta,
                 sources,
                 retrievalHits,
-                errorCode);
+                errorCode,
+                null,
+                evidenceMap);
     }
 
     private EvalChatResponse respondStubToolFeatureDisabled(
@@ -393,7 +403,8 @@ public class EvalChatController {
                 List.of(),
                 List.of(),
                 null,
-                toolBlock);
+                toolBlock,
+                null);
     }
 
     /**
@@ -436,7 +447,8 @@ public class EvalChatController {
                 List.of(),
                 List.of(),
                 null,
-                toolBlock);
+                toolBlock,
+                null);
     }
 
     private EvalChatResponse respondStubToolEval(
@@ -482,7 +494,8 @@ public class EvalChatController {
                 List.of(),
                 List.of(),
                 errorCode,
-                toolBlock);
+                toolBlock,
+                null);
     }
 
     private boolean isRealToolEvalRequest(EvalChatRequest request) {
@@ -532,7 +545,8 @@ public class EvalChatController {
                     List.of(),
                     List.of(),
                     null,
-                    toolBlock);
+                    toolBlock,
+                    null);
         }
         if (!mcpToolAllowed(toolName, mcpProperties != null ? mcpProperties.getAllowedTools() : null)) {
             String msg = "工具「" + toolName + "」不在 vagent.mcp.allowed-tools 白名单中。";
@@ -549,7 +563,8 @@ public class EvalChatController {
                     List.of(),
                     List.of(),
                     null,
-                    toolBlock);
+                    toolBlock,
+                    null);
         }
 
         McpClient client = mcpClientProvider.getIfAvailable();
@@ -573,7 +588,8 @@ public class EvalChatController {
                     List.of(),
                     List.of(),
                     "TOOL_SCHEMA_INVALID",
-                    toolBlock);
+                    toolBlock,
+                    null);
         }
         long t0 = System.nanoTime();
         String outcome = "success";
@@ -613,7 +629,8 @@ public class EvalChatController {
                 List.of(),
                 List.of(),
                 errorCode,
-                toolBlock);
+                toolBlock,
+                null);
     }
 
     private static Map<String, Object> resolveRealToolArguments(
@@ -842,8 +859,114 @@ public class EvalChatController {
                 new EvalChatResponse.CapabilityFlag(retrievalSupported, false, null),
                 new EvalChatResponse.CapabilityFlag(toolsSupported, toolSub, toolSub),
                 new EvalChatResponse.StreamingFlag(false),
-                new EvalChatResponse.GuardrailsFlag(quoteOnlyOn, false, reflectionOn)
+                new EvalChatResponse.GuardrailsFlag(quoteOnlyOn, true, reflectionOn)
         );
+    }
+
+    private static final Pattern ANSWER_NUMERIC = Pattern.compile("\\d{1,3}(?:,\\d{3})*(?:\\.\\d+)?");
+    private static final Pattern ANSWER_DATE_YMD =
+            Pattern.compile("(\\d{4})[-/](\\d{1,2})[-/](\\d{1,2})");
+    private static final Pattern ANSWER_DATE_CN =
+            Pattern.compile("(\\d{4})年(\\d{1,2})月(\\d{1,2})日");
+
+    private static List<EvalChatResponse.EvidenceMapItem> buildEvidenceMap(
+            String answer, List<EvalChatResponse.Source> sources) {
+        if (answer == null || answer.isBlank() || sources == null || sources.isEmpty()) {
+            return List.of();
+        }
+        LinkedHashSet<EvalChatResponse.EvidenceMapItem> out = new LinkedHashSet<>();
+        List<EvalChatResponse.Source> safeSources =
+                sources.stream().filter(s -> s != null && s.getId() != null && !s.getId().isBlank()).toList();
+
+        // numeric claims
+        Matcher nm = ANSWER_NUMERIC.matcher(answer);
+        while (nm.find() && out.size() < 8) {
+            String raw = nm.group();
+            String norm = normalizeNumeric(raw);
+            if (norm.isBlank()) {
+                continue;
+            }
+            List<String> supporting =
+                    safeSources.stream()
+                            .filter(s -> snippetContainsNumeric(s.getSnippet(), norm))
+                            .map(EvalChatResponse.Source::getId)
+                            .toList();
+            if (!supporting.isEmpty()) {
+                out.add(new EvalChatResponse.EvidenceMapItem("numeric", norm, null, supporting, null));
+            }
+        }
+
+        // date claims (ISO)
+        for (Pattern p : List.of(ANSWER_DATE_YMD, ANSWER_DATE_CN)) {
+            Matcher dm = p.matcher(answer);
+            while (dm.find() && out.size() < 8) {
+                String iso = toIsoDate(dm.group(1), dm.group(2), dm.group(3));
+                if (iso == null) {
+                    continue;
+                }
+                List<String> supporting =
+                        safeSources.stream()
+                                .filter(s -> snippetContainsDate(s.getSnippet(), iso))
+                                .map(EvalChatResponse.Source::getId)
+                                .toList();
+                if (!supporting.isEmpty()) {
+                    out.add(new EvalChatResponse.EvidenceMapItem("date", iso, null, supporting, null));
+                }
+            }
+        }
+        return List.copyOf(out);
+    }
+
+    private static String normalizeNumeric(String raw) {
+        if (raw == null) {
+            return "";
+        }
+        String s = raw.replace(",", "").trim();
+        // avoid mapping trivial single-digit noise
+        if (s.length() <= 1) {
+            return "";
+        }
+        return s;
+    }
+
+    private static boolean snippetContainsNumeric(String snippet, String numericNorm) {
+        if (snippet == null || snippet.isBlank() || numericNorm == null || numericNorm.isBlank()) {
+            return false;
+        }
+        // Simple normalization: remove commas in snippet before contains.
+        return snippet.replace(",", "").contains(numericNorm);
+    }
+
+    private static boolean snippetContainsDate(String snippet, String isoDate) {
+        if (snippet == null || snippet.isBlank() || isoDate == null || isoDate.isBlank()) {
+            return false;
+        }
+        if (snippet.contains(isoDate)) {
+            return true;
+        }
+        // accept YYYY/MM/DD or YYYY年M月D日 variants
+        String[] parts = isoDate.split("-");
+        if (parts.length != 3) {
+            return false;
+        }
+        String y = parts[0];
+        String m = String.valueOf(Integer.parseInt(parts[1]));
+        String d = String.valueOf(Integer.parseInt(parts[2]));
+        return snippet.contains(y + "/" + m + "/" + d) || snippet.contains(y + "年" + m + "月" + d + "日");
+    }
+
+    private static String toIsoDate(String yyyy, String mm, String dd) {
+        try {
+            int y = Integer.parseInt(yyyy);
+            int m = Integer.parseInt(mm);
+            int d = Integer.parseInt(dd);
+            if (y < 1970 || m < 1 || m > 12 || d < 1 || d > 31) {
+                return null;
+            }
+            return String.format(Locale.ROOT, "%04d-%02d-%02d", y, m, d);
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     private boolean toolsEffectiveSupported(EvalChatRequest request) {

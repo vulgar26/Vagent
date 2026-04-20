@@ -56,10 +56,10 @@ class EvalChatControllerFullAnswerMockMvcTest {
         when(knowledgeRetrieveService.searchForRag(any(UUID.class), any(String.class), any(RagProperties.class)))
                 .thenReturn(RagRetrieveResult.vectorOnly(singleHit()));
 
-        String q = "hello-full-answer";
+        String q = "hello-full-answer 42";
         String body =
                 """
-                {"query":"%s","mode":"EVAL","requires_citations":false}
+                {"query":"%s","mode":"EVAL","requires_citations":true}
                 """
                         .formatted(q);
 
@@ -72,14 +72,20 @@ class EvalChatControllerFullAnswerMockMvcTest {
                 .andExpect(jsonPath("$.answer").value(q))
                 .andExpect(jsonPath("$.behavior").value("answer"))
                 .andExpect(jsonPath("$.meta.eval_full_answer").value(true))
-                .andExpect(jsonPath("$.meta.eval_full_answer_outcome").value("ok"));
+                .andExpect(jsonPath("$.meta.eval_full_answer_outcome").value("ok"))
+                .andExpect(jsonPath("$.capabilities.guardrails.evidence_map").value(true))
+                .andExpect(jsonPath("$.evidence_map").isArray())
+                .andExpect(jsonPath("$.evidence_map.length()").value(org.hamcrest.Matchers.greaterThanOrEqualTo(1)))
+                .andExpect(jsonPath("$.evidence_map[0].claim_type").value("numeric"))
+                .andExpect(jsonPath("$.evidence_map[0].claim_value").value("42"))
+                .andExpect(jsonPath("$.evidence_map[0].source_ids").isArray());
     }
 
     private static List<RetrieveHit> singleHit() {
         RetrieveHit h = new RetrieveHit();
         h.setChunkId("chunk-a");
         h.setDocumentId("doc-a");
-        h.setContent("snippet body");
+        h.setContent("snippet body: price is 42");
         h.setDistance(0.05);
         return new ArrayList<>(List.of(h));
     }
