@@ -881,6 +881,11 @@ public class EvalChatController {
             Pattern.compile("(\\d{4})[-/](\\d{1,2})[-/](\\d{1,2})");
     private static final Pattern ANSWER_DATE_CN =
             Pattern.compile("(\\d{4})年(\\d{1,2})月(\\d{1,2})日");
+    /**
+     * P1-S1 enum（最小版）：全大写/数字/下划线 token（例如 RAIN、NO_RAIN、LEVEL_1）。
+     * 规则校验时要求该 token 能在 snippet 中命中（大小写不敏感）。
+     */
+    private static final Pattern ANSWER_ENUM_TOKEN = Pattern.compile("\\b[A-Z][A-Z0-9_]{2,}\\b");
 
     private static List<EvalChatResponse.EvidenceMapItem> buildEvidenceMap(
             String answer, List<EvalChatResponse.Source> sources) {
@@ -927,6 +932,24 @@ public class EvalChatController {
                 }
             }
         }
+
+        // enum claims (minimal)
+        Matcher em = ANSWER_ENUM_TOKEN.matcher(answer);
+        while (em.find() && out.size() < 8) {
+            String token = em.group();
+            String norm = normalizeEnumToken(token);
+            if (norm.isBlank()) {
+                continue;
+            }
+            List<String> supporting =
+                    safeSources.stream()
+                            .filter(s -> snippetContainsEnum(s.getSnippet(), norm))
+                            .map(EvalChatResponse.Source::getId)
+                            .toList();
+            if (!supporting.isEmpty()) {
+                out.add(new EvalChatResponse.EvidenceMapItem("enum", norm, null, supporting, null));
+            }
+        }
         return List.copyOf(out);
     }
 
@@ -966,6 +989,25 @@ public class EvalChatController {
         String m = String.valueOf(Integer.parseInt(parts[1]));
         String d = String.valueOf(Integer.parseInt(parts[2]));
         return snippet.contains(y + "/" + m + "/" + d) || snippet.contains(y + "年" + m + "月" + d + "日");
+    }
+
+    private static String normalizeEnumToken(String raw) {
+        if (raw == null) {
+            return "";
+        }
+        String s = raw.trim();
+        // guard against extremely short/noisy tokens
+        if (s.length() < 3) {
+            return "";
+        }
+        return s;
+    }
+
+    private static boolean snippetContainsEnum(String snippet, String enumToken) {
+        if (snippet == null || snippet.isBlank() || enumToken == null || enumToken.isBlank()) {
+            return false;
+        }
+        return snippet.toUpperCase(Locale.ROOT).contains(enumToken.toUpperCase(Locale.ROOT));
     }
 
     private static String toIsoDate(String yyyy, String mm, String dd) {

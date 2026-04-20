@@ -107,6 +107,32 @@ class EvalChatControllerFullAnswerMockMvcTest {
                 .andExpect(jsonPath("$.evidence_map.length()").value(0));
     }
 
+    @Test
+    void enumClaimExtractedAndMappedToSnippet() throws Exception {
+        when(knowledgeRetrieveService.searchForRag(any(UUID.class), any(String.class), any(RagProperties.class)))
+                .thenReturn(RagRetrieveResult.vectorOnly(singleHitEnumOnly()));
+
+        String q = "weather is RAIN";
+        String body =
+                """
+                {"query":"%s","mode":"EVAL","requires_citations":true}
+                """
+                        .formatted(q);
+
+        mockMvc.perform(
+                        post("/api/v1/eval/chat")
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .header("X-Eval-Token", TOKEN_PLAINTEXT)
+                                .content(body))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.behavior").value("answer"))
+                .andExpect(jsonPath("$.evidence_map").isArray())
+                .andExpect(jsonPath("$.evidence_map.length()").value(org.hamcrest.Matchers.greaterThanOrEqualTo(1)))
+                .andExpect(jsonPath("$.evidence_map[0].claim_type").value("enum"))
+                .andExpect(jsonPath("$.evidence_map[0].claim_value").value("RAIN"))
+                .andExpect(jsonPath("$.evidence_map[0].source_ids[0]").value("chunk-enum"));
+    }
+
     private static List<RetrieveHit> singleHit() {
         RetrieveHit h = new RetrieveHit();
         h.setChunkId("chunk-a");
@@ -121,6 +147,15 @@ class EvalChatControllerFullAnswerMockMvcTest {
         h.setChunkId("chunk-b");
         h.setDocumentId("doc-b");
         h.setContent("snippet body without numbers or dates");
+        h.setDistance(0.05);
+        return new ArrayList<>(List.of(h));
+    }
+
+    private static List<RetrieveHit> singleHitEnumOnly() {
+        RetrieveHit h = new RetrieveHit();
+        h.setChunkId("chunk-enum");
+        h.setDocumentId("doc-enum");
+        h.setContent("forecast: RAIN");
         h.setDistance(0.05);
         return new ArrayList<>(List.of(h));
     }
