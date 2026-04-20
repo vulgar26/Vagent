@@ -25,11 +25,8 @@ import java.util.Locale;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 
@@ -46,6 +43,7 @@ import com.vagent.rag.gate.RagPostRetrieveGateSettings;
 import com.vagent.eval.stub.EvalStubToolService;
 import com.vagent.mcp.client.McpClient;
 import com.vagent.mcp.config.McpProperties;
+import com.vagent.mcp.tools.McpToolArgumentSchemaValidator;
 
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
@@ -73,7 +71,8 @@ import static org.springframework.http.HttpStatus.NOT_FOUND;
  * <p>可选：{@code vagent.eval.api.full-answer-enabled=true} 时，在未门控短路且仍为 {@code answer} 路径下调用 {@link com.vagent.llm.LlmClient}
  * 生成正文（与主链路同款提示词）；默认 false 保持占位 {@code "OK"} 以控成本与 CI 稳定性。</p>
  * <p>{@code tool_policy=real} 且 {@code expected_behavior=tool}：在 {@code vagent.mcp.enabled}、白名单与 {@link McpClient} Bean 就绪时，
- * 将 JSON {@code tool_stub_id} 作为 MCP 工具名调用（超时同 {@code vagent.eval.api.stub-tool-timeout-ms}）。</p>
+ * 将 JSON {@code tool_stub_id} 作为 MCP 工具名<strong>同步</strong>调用（与 SSE 主链路 {@link com.vagent.chat.RagStreamChatService} 相同：
+ * {@code tools/call} 的 HTTP 超时由 {@code vagent.mcp.tool-call-timeout} 决定，不经 {@code vagent.eval.api.stub-tool-timeout-ms}）。</p>
  */
 /**
  * Bean 名显式指定，避免与包内其他 {@code EvalChatController}（若存在）默认名 {@code evalChatController} 冲突。
@@ -97,6 +96,7 @@ public class EvalChatController {
     private final EvalStubToolService evalStubToolService;
     private final McpProperties mcpProperties;
     private final ObjectProvider<McpClient> mcpClientProvider;
+    private final McpToolArgumentSchemaValidator mcpToolArgumentSchemaValidator;
 
     public EvalChatController(
             EvalApiProperties evalApiProperties,
@@ -109,7 +109,8 @@ public class EvalChatController {
             LlmProperties llmProperties,
             EvalStubToolService evalStubToolService,
             McpProperties mcpProperties,
-            ObjectProvider<McpClient> mcpClientProvider) {
+            ObjectProvider<McpClient> mcpClientProvider,
+            McpToolArgumentSchemaValidator mcpToolArgumentSchemaValidator) {
         this.evalApiProperties = evalApiProperties;
         this.debugNetworkPolicy = debugNetworkPolicy;
         this.guardrailsProperties = guardrailsProperties;
@@ -122,6 +123,7 @@ public class EvalChatController {
         this.evalStubToolService = evalStubToolService;
         this.mcpProperties = mcpProperties;
         this.mcpClientProvider = mcpClientProvider;
+        this.mcpToolArgumentSchemaValidator = mcpToolArgumentSchemaValidator;
     }
 
     @PostMapping("/chat")
@@ -551,26 +553,36 @@ public class EvalChatController {
         }
 
         McpClient client = mcpClientProvider.getIfAvailable();
-        Map<String, Object> args = evalMcpToolArguments(toolName, q);
+        Map<String, Object> args = resolveRealToolArguments(request, toolName, q);
+        Optional<List<String>> schemaViolations = mcpToolArgumentSchemaValidator.validate(toolName, args);
+        if (schemaViolations.isPresent()) {
+            List<String> viol = schemaViolations.get();
+            meta.put("tool_error_code", "TOOL_SCHEMA_INVALID");
+            meta.put("tool_schema_violations", viol);
+            EvalBehaviorMetaSync.applyRootToMeta(meta, "tool", "TOOL_SCHEMA_INVALID");
+            enforceRetrievalHitIdBoundary(meta, mode, httpRequest);
+            long latencyMs = (System.nanoTime() - startNs) / 1_000_000L;
+            EvalChatResponse.Tool toolBlock =
+                    new EvalChatResponse.Tool(true, false, false, toolName, "error", 0L);
+            return new EvalChatResponse(
+                    "MCP 工具入参未通过 JSON Schema 校验。",
+                    "tool",
+                    latencyMs,
+                    capabilitiesEffective(request),
+                    meta,
+                    List.of(),
+                    List.of(),
+                    "TOOL_SCHEMA_INVALID",
+                    toolBlock);
+        }
         long t0 = System.nanoTime();
         String outcome = "success";
         boolean succeeded = true;
         Map<String, Object> result = Map.of();
         try {
-            CompletableFuture<Map<String, Object>> fut =
-                    CompletableFuture.supplyAsync(() -> client.callTool(toolName, args));
-            result = fut.get(evalApiProperties.getStubToolTimeoutMs(), TimeUnit.MILLISECONDS);
-        } catch (TimeoutException e) {
-            succeeded = false;
-            outcome = "timeout";
-        } catch (ExecutionException e) {
-            succeeded = false;
-            Throwable root = e.getCause() != null ? e.getCause() : e;
-            outcome = isLikelyTimeoutEval(root) ? "timeout" : "error";
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            succeeded = false;
-            outcome = "error";
+            // 与 RagStreamChatService.tryCallToolForContext 一致：同步 callTool，超时由 HttpMcpClient 的
+            // vagent.mcp.tool-call-timeout（tools/call）承担，避免与 eval 桩超时双轨叠加。
+            result = client.callTool(toolName, args);
         } catch (Exception e) {
             succeeded = false;
             outcome = isLikelyTimeoutEval(e) ? "timeout" : "error";
@@ -602,6 +614,15 @@ public class EvalChatController {
                 List.of(),
                 errorCode,
                 toolBlock);
+    }
+
+    private static Map<String, Object> resolveRealToolArguments(
+            EvalChatRequest request, String toolName, String userQuery) {
+        Map<String, Object> override = request.getMcpToolArguments();
+        if (override != null && !override.isEmpty()) {
+            return new LinkedHashMap<>(override);
+        }
+        return evalMcpToolArguments(toolName, userQuery);
     }
 
     private static Map<String, Object> evalMcpToolArguments(String toolName, String userQuery) {

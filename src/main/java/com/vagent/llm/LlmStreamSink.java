@@ -5,7 +5,7 @@ package com.vagent.llm;
  * <p>
  * <b>这个接口是干什么的：</b>
  * 把「模型吐出的增量文本」和「结束/失败」事件从 LLM 实现层传回调用方（例如后面要写 SSE 时，在 onChunk 里写 event）。
- * 采用回调而不是 {@code Iterator} 或阻塞流，是为了贴合异步流式 IO 与取消（策划书 §3 中的 taskId / stop）。
+ * 采用回调而不是 {@code Iterator} 或阻塞流，是为了贴合异步流式 IO 与取消（taskId / stop）。
  * <p>
  * <b>为什么不用 Reactor Flux 等：</b>
  * 先保持核心接口依赖最少；若某层希望响应式，可在适配层把回调桥接到 Flux。编排层仍以接口为主更易替换厂商。

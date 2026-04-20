@@ -11,7 +11,9 @@ param(
   # 在线模式：GET .../eval/runs/{id} 校验两端 dataset_id（-RequireSameDataset 时缺失字段直接失败）
   [switch]$RequireSameDataset,
   # 任一条「PASS -> 非 PASS」且 cand_error_code 为契约类时 exit 1（用于 hybrid/rerank A/B 门禁）
-  [switch]$StrictContractGate
+  [switch]$StrictContractGate,
+  # 可选：Bearer token（与 ci-eval-remote.sh 一致）；未传时读环境变量 EVAL_HTTP_TOKEN
+  [string]$EvalHttpToken
 )
 
 $ErrorActionPreference = "Stop"
@@ -42,9 +44,20 @@ if (-not (Is-NonEmpty $BaseResultsPath) -or -not (Is-NonEmpty $CandResultsPath))
   }
 }
 
+function Get-EvalInvokeHeaders {
+  $h = @{}
+  if (Is-NonEmpty $script:CompareEvalBearer) {
+    $h['Authorization'] = "Bearer $($script:CompareEvalBearer.Trim())"
+  }
+  return $h
+}
+
 function Get-RunReport([string]$runId) {
   # 先取 JSON 字符串再 ConvertFrom-Json，避免 Invoke-RestMethod 在某些环境下内存膨胀
-  $raw = Invoke-WebRequest -Uri "$EvalBase/api/v1/eval/runs/$runId/report?error_code_top_n=20" -Method Get -UseBasicParsing
+  $hdr = Get-EvalInvokeHeaders
+  $params = @{ Uri = "$EvalBase/api/v1/eval/runs/$runId/report?error_code_top_n=20"; Method = 'Get'; UseBasicParsing = $true }
+  if ($hdr.Count -gt 0) { $params['Headers'] = $hdr }
+  $raw = Invoke-WebRequest @params
   return ($raw.Content | ConvertFrom-Json)
 }
 
@@ -52,7 +65,10 @@ function Get-RunResultsAll([string]$runId) {
   $offset = 0
   $all = @()
   while ($true) {
-    $raw = Invoke-WebRequest -Uri "$EvalBase/api/v1/eval/runs/$runId/results?offset=$offset&limit=$Limit" -Method Get -UseBasicParsing
+    $hdr = Get-EvalInvokeHeaders
+    $params = @{ Uri = "$EvalBase/api/v1/eval/runs/$runId/results?offset=$offset&limit=$Limit"; Method = 'Get'; UseBasicParsing = $true }
+    if ($hdr.Count -gt 0) { $params['Headers'] = $hdr }
+    $raw = Invoke-WebRequest @params
     $resp = $raw.Content | ConvertFrom-Json
     if (-not $resp -or -not $resp.results) { break }
     $batch = @($resp.results)
@@ -118,6 +134,14 @@ if (-not (Is-NonEmpty $CandResultsPath) -and (Is-NonEmpty $CandRunId) -and (Test
 
 $offline = (Is-NonEmpty $BaseResultsPath) -and (Is-NonEmpty $CandResultsPath)
 
+$script:CompareEvalBearer = $null
+if (Is-NonEmpty $EvalHttpToken) {
+  $script:CompareEvalBearer = $EvalHttpToken
+}
+elseif (Is-NonEmpty $env:EVAL_HTTP_TOKEN) {
+  $script:CompareEvalBearer = $env:EVAL_HTTP_TOKEN
+}
+
 if ($offline) {
   if (-not $BaseRunId) { $BaseRunId = Guess-RunIdFromFile $BaseResultsPath }
   if (-not $CandRunId) { $CandRunId = Guess-RunIdFromFile $CandResultsPath }
@@ -129,7 +153,8 @@ if ($offline) {
   if (-not $EvalBase) { throw "online mode requires -EvalBase" }
   if (-not $BaseRunId) { throw "online mode requires -BaseRunId" }
   if (-not $CandRunId) { throw "online mode requires -CandRunId" }
-  Assert-EvalSameDatasetForCompare -EvalBase $EvalBase -BaseRunId $BaseRunId -CandRunId $CandRunId -RequireSameDataset:$RequireSameDataset
+  $dsHeaders = Get-EvalInvokeHeaders
+  Assert-EvalSameDatasetForCompare -EvalBase $EvalBase -BaseRunId $BaseRunId -CandRunId $CandRunId -RequireSameDataset:$RequireSameDataset -HttpHeaders $dsHeaders
   $baseReport = Get-RunReport $BaseRunId
   $candReport = Get-RunReport $CandRunId
   $baseResults = Get-RunResultsAll $BaseRunId

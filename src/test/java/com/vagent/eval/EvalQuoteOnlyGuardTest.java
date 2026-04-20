@@ -3,6 +3,7 @@ package com.vagent.eval;
 import com.vagent.kb.dto.RetrieveHit;
 import org.junit.jupiter.api.Test;
 
+import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 
@@ -84,7 +85,8 @@ class EvalQuoteOnlyGuardTest {
     void corpusFromRetrieveHits_skipsBlankContent() {
         RetrieveHit h = new RetrieveHit();
         h.setContent("  alpha  ");
-        assertThat(EvalQuoteOnlyGuard.corpusFromRetrieveHits(List.of(h, null))).containsExactly("  alpha  ");
+        assertThat(EvalQuoteOnlyGuard.corpusFromRetrieveHits(Arrays.asList(h, null)))
+                .containsExactly("  alpha  ");
         assertThat(EvalQuoteOnlyGuard.corpusFromRetrieveHits(List.of())).isEmpty();
     }
 }

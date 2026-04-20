@@ -1,10 +1,14 @@
 package com.vagent.eval.stub;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.vagent.eval.EvalApiProperties;
 import org.springframework.stereotype.Service;
 
 import java.util.Locale;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -15,20 +19,32 @@ import java.util.concurrent.TimeoutException;
 /**
  * vagent-eval {@code tool_policy=stub} 时的进程内桩工具：满足
  * {@code tool.required && tool.used && tool.succeeded} 判定，不依赖外部 MCP。
+ *
+ * <p>成功路径下先构造结构化 JSON payload，再按 classpath 中的 JSON Schema（Draft 2020-12）校验，
+ * 最后由 payload 渲染对评测可见的中文 {@link Result#answer()}。</p>
  */
 @Service
 public final class EvalStubToolService {
 
     private final EvalApiProperties evalApiProperties;
+    private final EvalStubToolPayloadValidator payloadValidator;
+    private final ObjectMapper objectMapper;
     private final EvalStubToolCircuitBreaker circuitBreaker;
-    private final ExecutorService executor = Executors.newCachedThreadPool(r -> {
-        Thread t = new Thread(r, "eval-stub-tool");
-        t.setDaemon(true);
-        return t;
-    });
+    private final ExecutorService executor =
+            Executors.newCachedThreadPool(
+                    r -> {
+                        Thread t = new Thread(r, "eval-stub-tool");
+                        t.setDaemon(true);
+                        return t;
+                    });
 
-    public EvalStubToolService(EvalApiProperties evalApiProperties) {
+    public EvalStubToolService(
+            EvalApiProperties evalApiProperties,
+            EvalStubToolPayloadValidator payloadValidator,
+            ObjectMapper objectMapper) {
         this.evalApiProperties = evalApiProperties;
+        this.payloadValidator = payloadValidator;
+        this.objectMapper = objectMapper;
         this.circuitBreaker =
                 new EvalStubToolCircuitBreaker(
                         evalApiProperties.getStubToolCircuitFailureThreshold(),
@@ -81,33 +97,99 @@ public final class EvalStubToolService {
         return (System.nanoTime() - startNs) / 1_000_000L;
     }
 
-    private static Result doInvoke(String toolKey) {
+    private Result doInvoke(String toolKey) {
         return switch (toolKey) {
-            case "stub_weather" ->
-                    new Result(
-                            toolKey,
-                            "【桩-天气】北京当前天气：晴，气温 18～26℃，北风 2 级（评测桩数据，非实时）。",
-                            "success",
-                            true,
-                            0L);
-            case "stub_train" ->
-                    new Result(
-                            toolKey,
-                            "【桩-车次】上海虹桥→杭州东示例：G7551 08:12 开，约 45 分钟到（评测桩数据）。",
-                            "success",
-                            true,
-                            0L);
-            case "stub_search" ->
-                    new Result(
-                            toolKey,
-                            "【桩-餐厅】示例高分餐厅：评测桩餐厅 A / B / C（评测桩数据，非实时榜单）。",
-                            "success",
-                            true,
-                            0L);
+            case "stub_weather" -> finalizePayload(toolKey, buildWeatherPayload());
+            case "stub_train" -> finalizePayload(toolKey, buildTrainPayload());
+            case "stub_search" -> finalizePayload(toolKey, buildSearchPayload());
             default ->
                     new Result(
                             toolKey,
                             "未识别的桩工具场景。", "error", false, 0L);
+        };
+    }
+
+    private Result finalizePayload(String toolKey, ObjectNode payload) {
+        if (evalApiProperties.isStubToolJsonSchemaValidationEnabled()) {
+            Optional<String> err = payloadValidator.validate(toolKey, payload);
+            if (err.isPresent()) {
+                return new Result(toolKey, "桩工具输出校验失败。", "error", false, 0L);
+            }
+        }
+        return new Result(toolKey, formatAnswer(toolKey, payload), "success", true, 0L);
+    }
+
+    private ObjectNode buildWeatherPayload() {
+        ObjectNode n = objectMapper.createObjectNode();
+        n.put("kind", "eval_stub_weather");
+        n.put("city", "北京");
+        n.put("summary", "晴");
+        n.put("temp_min_c", 18);
+        n.put("temp_max_c", 26);
+        n.put("wind_bft", 2);
+        return n;
+    }
+
+    private ObjectNode buildTrainPayload() {
+        ObjectNode n = objectMapper.createObjectNode();
+        n.put("kind", "eval_stub_train");
+        n.put("from_station", "上海虹桥");
+        n.put("to_station", "杭州东");
+        n.put("train_no", "G7551");
+        n.put("depart_time", "08:12");
+        n.put("duration_minutes", 45);
+        return n;
+    }
+
+    private ObjectNode buildSearchPayload() {
+        ObjectNode n = objectMapper.createObjectNode();
+        n.put("kind", "eval_stub_search");
+        ArrayNode arr = n.putArray("restaurant_names");
+        arr.add("评测桩餐厅 A");
+        arr.add("评测桩餐厅 B");
+        arr.add("评测桩餐厅 C");
+        return n;
+    }
+
+    private static String formatAnswer(String toolKey, ObjectNode payload) {
+        return switch (toolKey) {
+            case "stub_weather" ->
+                    "【桩-天气】"
+                            + payload.get("city").asText()
+                            + "当前天气："
+                            + payload.get("summary").asText()
+                            + "，气温 "
+                            + payload.get("temp_min_c").asInt()
+                            + "～"
+                            + payload.get("temp_max_c").asInt()
+                            + "℃，北风 "
+                            + payload.get("wind_bft").asInt()
+                            + " 级（评测桩数据，非实时）。";
+            case "stub_train" ->
+                    "【桩-车次】"
+                            + payload.get("from_station").asText()
+                            + "→"
+                            + payload.get("to_station").asText()
+                            + "示例："
+                            + payload.get("train_no").asText()
+                            + " "
+                            + payload.get("depart_time").asText()
+                            + " 开，约 "
+                            + payload.get("duration_minutes").asInt()
+                            + " 分钟到（评测桩数据）。";
+            case "stub_search" -> {
+                StringBuilder sb = new StringBuilder("【桩-餐厅】示例高分餐厅：");
+                ArrayNode names = (ArrayNode) payload.get("restaurant_names");
+                for (int i = 0; i < names.size(); i++) {
+                    if (i > 0) {
+                        sb.append(" / ");
+                    }
+                    sb.append(names.get(i).asText());
+                }
+                sb.append("（评测桩数据，非实时榜单）。");
+                yield sb.toString();
+            }
+            default -> "";
         };
     }
 

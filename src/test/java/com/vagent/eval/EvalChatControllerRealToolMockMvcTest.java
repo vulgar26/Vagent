@@ -16,6 +16,8 @@ import java.util.Map;
 import static com.vagent.eval.EvalChatContractTestSupport.TOKEN_PLAINTEXT;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -63,6 +65,29 @@ class EvalChatControllerRealToolMockMvcTest {
                 .andExpect(jsonPath("$.tool.name").value("echo"))
                 .andExpect(jsonPath("$.meta.eval_real_tools").value(true))
                 .andExpect(jsonPath("$.capabilities.tools.supported").value(true));
+    }
+
+    @Test
+    void realToolEchoEmptyQuerySchemaInvalidDoesNotCallMcp() throws Exception {
+        mockMvc.perform(
+                        post("/api/v1/eval/chat")
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .header("X-Eval-Token", TOKEN_PLAINTEXT)
+                                .content(
+                                        "{\"query\":\"schema-invalid-harness\",\"mode\":\"EVAL\",\"requires_citations\":false,"
+                                                + "\"expected_behavior\":\"tool\",\"tool_policy\":\"real\","
+                                                + "\"tool_stub_id\":\"echo\","
+                                                + "\"mcp_tool_arguments\":{\"message\":\"\"}}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.behavior").value("tool"))
+                .andExpect(jsonPath("$.error_code").value("TOOL_SCHEMA_INVALID"))
+                .andExpect(jsonPath("$.tool.used").value(false))
+                .andExpect(jsonPath("$.tool.succeeded").value(false))
+                .andExpect(jsonPath("$.tool.outcome").value("error"))
+                .andExpect(jsonPath("$.meta.tool_error_code").value("TOOL_SCHEMA_INVALID"))
+                .andExpect(jsonPath("$.meta.tool_schema_violations").isArray());
+
+        verify(mcpClient, never()).callTool(any(), any());
     }
 
     @Test

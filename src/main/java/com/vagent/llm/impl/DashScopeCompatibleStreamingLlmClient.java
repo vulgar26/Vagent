@@ -153,7 +153,7 @@ public final class DashScopeCompatibleStreamingLlmClient implements LlmClient {
         if (d != null && !d.isBlank()) {
             return d.trim();
         }
-        return "qwen-turbo";
+        return "qwen3.5-plus";
     }
 
     private static String buildCompletionsUrl(String baseUrl) {

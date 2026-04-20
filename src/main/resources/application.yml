@@ -80,9 +80,12 @@ vagent:
       full-answer-timeout-ms: ${VAGENT_EVAL_API_FULL_ANSWER_TIMEOUT_MS:120000}
       # tool_policy=stub 时的进程内桩工具；关则 capabilities.tools.supported=false（工具题 SKIPPED_UNSUPPORTED）
       stub-tools-enabled: ${VAGENT_EVAL_API_STUB_TOOLS_ENABLED:true}
+      # 仅 tool_policy=stub 进程内桩；real MCP 见 vagent.mcp.tool-call-timeout
       stub-tool-timeout-ms: ${VAGENT_EVAL_API_STUB_TOOL_TIMEOUT_MS:5000}
       stub-tool-circuit-failure-threshold: ${VAGENT_EVAL_API_STUB_TOOL_CIRCUIT_FAILURES:5}
       stub-tool-circuit-open-seconds: ${VAGENT_EVAL_API_STUB_TOOL_CIRCUIT_OPEN_SEC:30}
+      # 桩工具结构化输出是否做 JSON Schema 校验（classpath:/eval/stub-schemas/*.schema.json）
+      stub-tool-json-schema-validation-enabled: ${VAGENT_EVAL_API_STUB_TOOL_JSON_SCHEMA:true}
   # M5：检索前改写 + 规则意图（寒暄/澄清/RAG）；详见 docs/M5-实现说明.md
   orchestration:
     intent-enabled: true
@@ -133,6 +136,8 @@ vagent:
     base-url: http://127.0.0.1:8766/mcp
     token: ${MCP_TOKEN:}
     protocol-version: 2025-03-26
+    # tools/call 单次 HTTP 超时；SSE 主链路与 eval tool_policy=real 共用（见 HttpMcpClient）
+    tool-call-timeout: 3s
     # U7：主链路工具调用白名单（逗号分隔）。为空则主链路不允许任何工具（仍可用 /api/v1/mcp/* 联调）。
     allowed-tools: echo,ping
   llm:

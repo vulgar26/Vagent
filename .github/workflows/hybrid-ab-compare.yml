@@ -1,0 +1,61 @@
+# P1-0b：同一 vagent-eval 上两次 run（如 hybrid 关 vs 开）做 compare，带 dataset 校验与契约门禁。
+# 需配置 secrets：EVAL_BASE_URL；可选 EVAL_HTTP_TOKEN（与 compare-eval-runs.ps1 / ci-eval-remote 一致）。
+# 未配置 EVAL_BASE_URL 时跳过，不把 job 标红。
+
+name: hybrid-ab-compare
+
+on:
+  workflow_dispatch:
+    inputs:
+      base_run_id:
+        description: "Baseline run_id（如 hybrid 关）"
+        required: true
+        type: string
+      cand_run_id:
+        description: "Candidate run_id（如 hybrid 开）"
+        required: true
+        type: string
+
+jobs:
+  compare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Compare runs (optional)
+        env:
+          EVAL_BASE_URL: ${{ secrets.EVAL_BASE_URL }}
+          EVAL_HTTP_TOKEN: ${{ secrets.EVAL_HTTP_TOKEN }}
+        shell: pwsh
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:EVAL_BASE_URL)) {
+            Write-Host "Secret EVAL_BASE_URL not set — skipping hybrid A/B compare."
+            Write-Host "See scripts/README-hybrid-rerank-ab.md and plans/ci-eval-github-actions.md."
+            exit 0
+          }
+          $base = $env:EVAL_BASE_URL.TrimEnd('/')
+          $br = "${{ inputs.base_run_id }}".Trim()
+          $cr = "${{ inputs.cand_run_id }}".Trim()
+          if ([string]::IsNullOrWhiteSpace($br) -or [string]::IsNullOrWhiteSpace($cr)) {
+            Write-Host "workflow_dispatch inputs base_run_id / cand_run_id required."
+            exit 1
+          }
+          & "$env:GITHUB_WORKSPACE/scripts/compare-eval-runs.ps1" `
+            -EvalBase $base `
+            -BaseRunId $br `
+            -CandRunId $cr `
+            -RequireSameDataset `
+            -StrictContractGate `
+            -OutDir "$env:GITHUB_WORKSPACE/compare-out"
+
+      - name: Upload compare artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hybrid-ab-compare
+          path: compare-out
+          if-no-files-found: ignore

@@ -92,8 +92,11 @@ public class EvalApiProperties {
     private boolean stubToolsEnabled = true;
 
     /**
-     * 桩工具单次执行上限（毫秒），超时则 {@code tool.succeeded=false}、{@code tool.outcome=timeout}，根级 {@code error_code=TOOL_TIMEOUT}。
-     * 亦用于 {@code tool_policy=real} 时评测接口经 {@link com.vagent.mcp.client.McpClient} 调用的超时。
+     * 桩工具（{@code tool_policy=stub}）单次执行上限（毫秒），超时则 {@code tool.succeeded=false}、{@code tool.outcome=timeout}，
+     * 根级 {@code error_code=TOOL_TIMEOUT}。
+     *
+     * <p>{@code tool_policy=real} 的 MCP 调用与主链路相同：由 {@code vagent.mcp.tool-call-timeout} 控制 {@code tools/call} HTTP 超时，
+     * 不使用本键。</p>
      */
     private long stubToolTimeoutMs = 5_000L;
 
@@ -104,6 +107,12 @@ public class EvalApiProperties {
 
     /** 熔断打开持续时间（秒）。 */
     private int stubToolCircuitOpenSeconds = 30;
+
+    /**
+     * 为 true 时：{@code tool_policy=stub} 进程内桩在返回成功前，对结构化 payload 校验 JSON Schema；失败则
+     * {@code tool.succeeded=false}、{@code tool.outcome=error}。默认开启；排障可临时关闭。
+     */
+    private boolean stubToolJsonSchemaValidationEnabled = true;
 
     public boolean isEnabled() {
         return enabled;
@@ -248,6 +257,14 @@ public class EvalApiProperties {
 
     public void setStubToolCircuitOpenSeconds(int stubToolCircuitOpenSeconds) {
         this.stubToolCircuitOpenSeconds = stubToolCircuitOpenSeconds;
+    }
+
+    public boolean isStubToolJsonSchemaValidationEnabled() {
+        return stubToolJsonSchemaValidationEnabled;
+    }
+
+    public void setStubToolJsonSchemaValidationEnabled(boolean stubToolJsonSchemaValidationEnabled) {
+        this.stubToolJsonSchemaValidationEnabled = stubToolJsonSchemaValidationEnabled;
     }
 }
 

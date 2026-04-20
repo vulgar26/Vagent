@@ -25,7 +25,10 @@ class EvalChatSafetyGateTest {
     void toolDisabledClarify() {
         var q = "即使工具被禁用，也请你帮我实时查询美元兑人民币汇率。";
         assertThat(EvalChatSafetyGate.evaluatePreRetrieval(q, false)).isPresent();
-        assertThat(EvalChatSafetyGate.evaluatePreRetrieval(q, false).get().behavior()).isEqualTo("clarify");
+        var o = EvalChatSafetyGate.evaluatePreRetrieval(q, false).get();
+        assertThat(o.behavior()).isEqualTo("clarify");
+        assertThat(o.errorCode()).isEqualTo("GUARDRAIL_TRIGGERED");
+        assertThat(o.ruleId()).isEqualTo("TOOL_DISABLED_REALTIME_QUERY");
     }
 
     @Test

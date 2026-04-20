@@ -28,6 +28,7 @@ import com.vagent.guardrails.GuardrailsProperties;
 import com.vagent.user.UserIdFormats;
 import com.vagent.mcp.client.McpClient;
 import com.vagent.mcp.config.McpProperties;
+import com.vagent.mcp.tools.McpToolArgumentSchemaValidator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -92,6 +93,7 @@ public class RagStreamChatService {
     private final OrchestrationProperties orchestrationProperties;
     private final ObjectProvider<McpClient> mcpClientProvider;
     private final McpProperties mcpProperties;
+    private final McpToolArgumentSchemaValidator mcpToolArgumentSchemaValidator;
     private final EvalApiProperties evalApiProperties;
     private final RagPostRetrieveGateSettings ragPostRetrieveGateSettings;
     private final GuardrailsProperties guardrailsProperties;
@@ -109,6 +111,7 @@ public class RagStreamChatService {
             OrchestrationProperties orchestrationProperties,
             ObjectProvider<McpClient> mcpClientProvider,
             McpProperties mcpProperties,
+            McpToolArgumentSchemaValidator mcpToolArgumentSchemaValidator,
             EvalApiProperties evalApiProperties,
             RagPostRetrieveGateSettings ragPostRetrieveGateSettings,
             GuardrailsProperties guardrailsProperties,
@@ -125,6 +128,7 @@ public class RagStreamChatService {
         this.orchestrationProperties = orchestrationProperties;
         this.mcpClientProvider = mcpClientProvider;
         this.mcpProperties = mcpProperties;
+        this.mcpToolArgumentSchemaValidator = mcpToolArgumentSchemaValidator;
         this.evalApiProperties = evalApiProperties;
         this.ragPostRetrieveGateSettings = ragPostRetrieveGateSettings;
         this.guardrailsProperties = guardrailsProperties;
@@ -202,6 +206,8 @@ public class RagStreamChatService {
         boolean toolUsed = false;
         String toolOutcome = null;
         String toolError = null;
+        String toolErrorCode = null;
+        List<String> toolSchemaViolations = null;
         if (branch == ChatBranch.SYSTEM_DIALOG) {
             hits = List.of();
             systemText = buildSystemDialogPrompt();
@@ -215,6 +221,8 @@ public class RagStreamChatService {
                 toolUsed = out.used();
                 toolOutcome = out.outcome();
                 toolError = out.error();
+                toolErrorCode = out.toolErrorCode();
+                toolSchemaViolations = out.toolSchemaViolations();
             }
 
             retrieveTrace = knowledgeRetrieveService.searchForRag(userId, rewrite.retrievalQuery(), ragProperties);
@@ -256,6 +264,9 @@ public class RagStreamChatService {
         final String toolNameFinal = toolMetaName;
         final String toolOutcomeFinal = toolOutcome;
         final String toolErrorFinal = toolError;
+        final String toolErrorCodeFinal = toolErrorCode;
+        final List<String> toolSchemaViolationsFinal =
+                toolSchemaViolations != null ? List.copyOf(toolSchemaViolations) : null;
         final RagRetrieveResult retrieveTraceFinal = retrieveTrace;
         final List<RetrieveHit> ragHitsFinal = List.copyOf(hits);
         llmStreamExecutor.execute(
@@ -272,6 +283,8 @@ public class RagStreamChatService {
                                 toolNameFinal,
                                 toolOutcomeFinal,
                                 toolErrorFinal,
+                                toolErrorCodeFinal,
+                                toolSchemaViolationsFinal,
                                 retrieveTraceFinal,
                                 ragHitsFinal));
         return emitter;
@@ -289,6 +302,8 @@ public class RagStreamChatService {
             String toolName,
             String toolOutcome,
             String toolError,
+            String toolErrorCode,
+            List<String> toolSchemaViolations,
             RagRetrieveResult retrieveTrace,
             List<RetrieveHit> ragHitsForGuard) {
         try {
@@ -316,6 +331,8 @@ public class RagStreamChatService {
                         toolName,
                         toolOutcome,
                         toolError,
+                        toolErrorCode,
+                        toolSchemaViolations,
                         retrieveTrace,
                         metaExtra);
             }
@@ -367,6 +384,8 @@ public class RagStreamChatService {
                                     toolName,
                                     toolOutcome,
                                     toolError,
+                                    toolErrorCode,
+                                    toolSchemaViolations,
                                     retrieveTrace,
                                     metaExtra);
                             sendEvent(emitter2, Map.of("type", "chunk", "text", buf.toString()));
@@ -455,6 +474,8 @@ public class RagStreamChatService {
                     null,
                     null,
                     null,
+                    null,
+                    null,
                     retrieveTrace,
                     metaExtra);
             if (taskRegistry.isCancelled(taskId)) {
@@ -498,6 +519,8 @@ public class RagStreamChatService {
                     null,
                     null,
                     null,
+                    null,
+                    null,
                     metaExtra != null ? metaExtra : Map.of());
             if (taskRegistry.isCancelled(taskId)) {
                 sendEvent(emitter, Map.of("type", "cancelled"));
@@ -522,6 +545,8 @@ public class RagStreamChatService {
             String toolName,
             String toolOutcome,
             String toolError,
+            String toolErrorCode,
+            List<String> toolSchemaViolations,
             RagRetrieveResult retrieveTrace,
             Map<String, Object> additionalMeta)
             throws IOException {
@@ -535,7 +560,12 @@ public class RagStreamChatService {
             retrieveTrace.putRetrievalTrace(meta);
         }
         meta.put("toolUsed", toolUsed);
-        if (toolUsed && toolName != null && !toolName.isBlank()) {
+        boolean toolAttribution =
+                toolUsed
+                        || (toolOutcome != null && !toolOutcome.isBlank())
+                        || (toolError != null && !toolError.isBlank())
+                        || (toolErrorCode != null && !toolErrorCode.isBlank());
+        if (toolAttribution && toolName != null && !toolName.isBlank()) {
             meta.put("toolName", toolName);
         }
         if (toolOutcome != null && !toolOutcome.isBlank()) {
@@ -544,10 +574,19 @@ public class RagStreamChatService {
         if (toolError != null && !toolError.isBlank()) {
             meta.put("toolError", toolError);
         }
+        if (toolErrorCode != null && !toolErrorCode.isBlank()) {
+            meta.put("tool_error_code", toolErrorCode);
+        }
+        if (toolSchemaViolations != null && !toolSchemaViolations.isEmpty()) {
+            meta.put("tool_schema_violations", List.copyOf(toolSchemaViolations));
+        }
         if (additionalMeta != null && !additionalMeta.isEmpty()) {
             for (Map.Entry<String, Object> e : additionalMeta.entrySet()) {
                 meta.put(e.getKey(), e.getValue());
             }
+        }
+        if (toolErrorCode != null && !toolErrorCode.isBlank() && !meta.containsKey("error_code")) {
+            meta.put("error_code", toolErrorCode);
         }
         sendEvent(emitter, meta);
     }
@@ -602,6 +641,10 @@ public class RagStreamChatService {
 
         try {
             Map<String, Object> args = sanitizeToolArguments(toolName, toolArgs, userMessage);
+            Optional<List<String>> schemaViolations = mcpToolArgumentSchemaValidator.validate(toolName, args);
+            if (schemaViolations.isPresent()) {
+                return ToolContextOutcome.schemaInvalid(schemaViolations.get());
+            }
             Map<String, Object> result = client.callTool(toolName, args);
             return ToolContextOutcome.used(buildToolContextPrompt(toolName, result));
         } catch (Exception e) {
@@ -627,26 +670,43 @@ public class RagStreamChatService {
         return false;
     }
 
-    private record ToolContextOutcome(boolean used, String contextText, String outcome, String error) {
+    private record ToolContextOutcome(
+            boolean used,
+            String contextText,
+            String outcome,
+            String error,
+            String toolErrorCode,
+            List<String> toolSchemaViolations) {
         static ToolContextOutcome skipped() {
-            return new ToolContextOutcome(false, null, null, null);
+            return new ToolContextOutcome(false, null, null, null, null, null);
         }
 
         static ToolContextOutcome used(String contextText) {
-            return new ToolContextOutcome(true, contextText, "success", null);
+            return new ToolContextOutcome(true, contextText, "success", null, null, null);
         }
 
         static ToolContextOutcome failed(String outcome, String error) {
-            return new ToolContextOutcome(false, null, outcome, error);
+            return new ToolContextOutcome(false, null, outcome, error, null, null);
+        }
+
+        static ToolContextOutcome schemaInvalid(List<String> violations) {
+            String summary =
+                    violations.isEmpty()
+                            ? "TOOL_SCHEMA_INVALID"
+                            : String.join(
+                                    "; ",
+                                    violations.subList(0, Math.min(3, violations.size())));
+            return new ToolContextOutcome(
+                    false, null, "error", summary, "TOOL_SCHEMA_INVALID", List.copyOf(violations));
         }
     }
 
     private static Map<String, Object> sanitizeToolArguments(
             String toolName, Map<String, Object> raw, String userMessage) {
-        if ("ping".equals(toolName)) {
+        if ("ping".equalsIgnoreCase(toolName)) {
             return Map.of();
         }
-        if ("echo".equals(toolName)) {
+        if ("echo".equalsIgnoreCase(toolName)) {
             Object v = raw != null ? raw.get("message") : null;
             String message = v != null ? String.valueOf(v) : (userMessage != null ? userMessage : "");
             return Map.of("message", message);

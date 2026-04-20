@@ -80,7 +80,11 @@
 
 | 路径 | 用途 |
 |------|------|
-| `scripts/compare-eval-runs.ps1` | 在线拉取两 run 的 results + report，生成 compare JSON/MD，可选 dataset 校验与契约门禁。 |
+| `scripts/compare-eval-runs.ps1` | 在线拉取两 run 的 results + report，生成 compare JSON/MD，可选 dataset 校验与契约门禁。支持 **`-EvalHttpToken`** 或环境变量 **`EVAL_HTTP_TOKEN`**（`Authorization: Bearer`）。 |
 | `scripts/compare-eval-results-files.ps1` | 离线两段 results 文件对比。 |
 | `scripts/eval-compare-contract.ps1` | 被上述脚本点源；契约 `error_code` 集合的单点维护。 |
 | `plans/regression-compare-standard-runbook.md` | 通用 compare 留证流程。 |
+
+## 5. GitHub Actions（可选）
+
+手动触发 **`.github/workflows/hybrid-ab-compare.yml`**：输入 **`base_run_id`** / **`cand_run_id`**；在仓库 **Secrets** 中配置 **`EVAL_BASE_URL`**（及可选 **`EVAL_HTTP_TOKEN`**，与远程 eval 脚本一致）。未配置 **`EVAL_BASE_URL`** 时步骤跳过且 job 为绿。产物上传至 workflow artifact **`compare-out/`**（`eval_compare_*.json` / `.md`）。公网 / runner 可达性说明见 **`plans/ci-eval-github-actions.md`**。

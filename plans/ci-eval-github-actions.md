@@ -19,9 +19,13 @@
 - **`.github/workflows/ci.yml`**：默认 **不连 eval 服务**；先跑本仓 **eval 包烟测** 再跑其余单测（见 **[`eval-ci-smoke.md`](eval-ci-smoke.md)**）。  
 - **`.github/workflows/eval-remote.yml`**：`workflow_dispatch`（手动）+ `schedule`（默认定时，可按需改 cron）。  
   - 若未配置 `EVAL_BASE_URL` secret：步骤会 **跳过** 远程调用并打印说明，**不把整 job 标红**（避免未接 eval 的 fork 天天失败）。  
-  - 配置 secret 后：调用 **`scripts/ci-eval-remote.sh`** 发起一次 **全量** run（payload 由你方在 secret 里提供完整 JSON）。
-- **`scripts/ci-eval-remote.sh`**：用 `curl` + `jq` 做 `POST /api/v1/eval/runs`、轮询 `GET /api/v1/eval/runs/{id}`、最后拉 **report** 打摘要。  
-  - 轮询结束条件：响应 JSON 中出现 **`finished_at` 非空** 或 **`status` 为 `completed`/`succeeded`/`done`（大小写不敏感）** 之一即视为结束；若 eval 实现字段不同，请改脚本或让 eval 对齐其一。
+  - 配置 secret 后：调用 **`scripts/ci-eval-remote.sh`** 发起一次 **全量** run（payload 由你方在 secret 里提供完整 JSON）；失败时 job 标红；后续步骤 **`actions/upload-artifact`** 上传 **`eval-remote-report.json`**（存在时才上传，避免误报）。
+- **`.github/workflows/hybrid-ab-compare.yml`**：`workflow_dispatch`，对已有两次 **`run_id`** 调用 **`scripts/compare-eval-runs.ps1`**（**`-RequireSameDataset`** + **`-StrictContractGate`**）；依赖 **`EVAL_BASE_URL`** secret 与可选 **`EVAL_HTTP_TOKEN`**；未配置时跳过。详见 **`scripts/README-hybrid-rerank-ab.md`** §5。
+- **`scripts/ci-eval-remote.sh`**：用 `curl` + `jq` 做 `POST /api/v1/eval/runs`、轮询 `GET /api/v1/eval/runs/{id}`、最后拉 **report** 打摘要，并把报告写入工作区 **`eval-remote-report.json`**（供 Actions 上传 artifact）。  
+  - 轮询结束条件：响应 JSON 中出现 **`finished_at` 非空** 或 **`status` 为 `completed`/`succeeded`/`done`（大小写不敏感）** 之一即视为结束；若 **`status`** 为 **`failed`/`error`/`canceled`/`cancelled`**，立即结束并视为失败。若 eval 实现字段不同，请改脚本或让 eval 对齐其一。  
+  - 轮询超时：默认 **120** 轮、每轮间隔 **15s**（可用环境变量 **`EVAL_POLL_MAX_ROUNDS`**、**`EVAL_POLL_SLEEP_SEC`** 覆盖）；超时退出码 **2**。  
+  - 失败退出码 **1**：服务端 run 为失败终态；或 report JSON 中显式出现 **`p0_hard_gate_passed`/`overall_pass`/`p0_gate_passed` 之一为布尔 `false`**（字段缺失则不据此判失败）。  
+  - 在 **GitHub Actions** 中若设置了 **`GITHUB_STEP_SUMMARY`**，脚本会追加简短 Markdown 摘要（含 `run_id`）。
 
 ## 需要在 vagent-eval 侧准备什么
 

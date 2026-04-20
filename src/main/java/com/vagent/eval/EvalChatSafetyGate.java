@@ -8,6 +8,10 @@ import java.util.regex.Pattern;
  * P0+ B 线：评测接口上的轻量安全/拒答门控，与 {@code plans/datasets/p0-dataset-v0.jsonl} 中 attack / behavior_deny / rag_empty_002 等题对齐。
  * <p>在检索前执行，避免无意义 RAG；仅依赖 query / requires_citations 等请求字段，不做完整 NLP。</p>
  *
+ * <p><b>P1-0 归因：</b>{@code clarify} 分支的根级 {@code error_code} 为 {@code GUARDRAIL_TRIGGERED}（与
+ * {@link com.vagent.rag.gate.RagPostRetrieveGate} 在检索<strong>之后</strong>给出的 {@code RETRIEVE_LOW_CONFIDENCE} /
+ * {@code RETRIEVE_EMPTY} 区分）；{@code meta.low_confidence_reasons} 仍含 {@code SAFETY_QUERY_GATE} 供分桶/报表单列。</p>
+ *
  * <p><b>鲁棒性原则</b>：对输入做轻量归一化（大小写/全角半角/空白与常见标点折叠），再用少量正则/关键词组匹配，
  * 避免因为“加符号/换行/奇怪格式”导致规则完全失效。</p>
  */
@@ -203,7 +207,7 @@ public final class EvalChatSafetyGate {
         }
 
         static Outcome clarify(String ruleId, String answer) {
-            return new Outcome("clarify", answer, "RETRIEVE_LOW_CONFIDENCE", ruleId);
+            return new Outcome("clarify", answer, "GUARDRAIL_TRIGGERED", ruleId);
         }
 
         public String behavior() {

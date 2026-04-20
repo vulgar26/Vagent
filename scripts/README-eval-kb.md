@@ -40,4 +40,4 @@ psql -U postgres -d vagent -f scripts/reset-eval-kb-for-vagent-target.sql
 
 ## 5. `tool_policy=real`（MCP 真调用）
 
-当 **`vagent.mcp.enabled=true`**、**`vagent.mcp.allowed-tools`** 非空且进程内存在 **`McpClient`** Bean 时，`POST /api/v1/eval/chat` 在 **`expected_behavior=tool`** + **`tool_policy=real`** 下会调用 MCP：JSON **`tool_stub_id`** 为工具名（须在白名单内），超时与桩工具共用 **`vagent.eval.api.stub-tool-timeout-ms`**。MCP 未就绪时返回 **`behavior=clarify`** 与说明文案，避免误走 RAG 占位 `answer`。
+当 **`vagent.mcp.enabled=true`**、**`vagent.mcp.allowed-tools`** 非空且进程内存在 **`McpClient`** Bean 时，`POST /api/v1/eval/chat` 在 **`expected_behavior=tool`** + **`tool_policy=real`** 下会**同步**调用 MCP（与 SSE 主链路一致）：JSON **`tool_stub_id`** 为工具名（须在白名单内），**`tools/call` 的 HTTP 超时**为 **`vagent.mcp.tool-call-timeout`**（不是 **`vagent.eval.api.stub-tool-timeout-ms`**，后者仅用于进程内桩）。MCP 未就绪时返回 **`behavior=clarify`** 与说明文案，避免误走 RAG 占位 `answer`。

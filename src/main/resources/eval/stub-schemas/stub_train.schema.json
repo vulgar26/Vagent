@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vagent.local/eval/stub-schemas/stub_train.schema.json",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "kind",
+    "from_station",
+    "to_station",
+    "train_no",
+    "depart_time",
+    "duration_minutes"
+  ],
+  "properties": {
+    "kind": { "const": "eval_stub_train" },
+    "from_station": { "type": "string", "minLength": 1 },
+    "to_station": { "type": "string", "minLength": 1 },
+    "train_no": { "type": "string", "pattern": "^[A-Z][0-9]+$" },
+    "depart_time": { "type": "string", "pattern": "^[0-9]{2}:[0-9]{2}$" },
+    "duration_minutes": { "type": "integer", "minimum": 1 }
+  }
+}

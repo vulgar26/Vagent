@@ -4,6 +4,7 @@ import com.vagent.kb.dto.RetrieveHit;
 
 import java.util.List;
 import java.util.Locale;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.regex.Matcher;
@@ -194,6 +195,7 @@ public final class EvalQuoteOnlyGuard {
             return List.of();
         }
         return candidates.stream()
+                .filter(Objects::nonNull)
                 .map(RetrieveHit::getContent)
                 .filter(c -> c != null && !c.isBlank())
                 .toList();

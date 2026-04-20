@@ -47,6 +47,12 @@
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-validation</artifactId>
         </dependency>
+        <!-- eval stub tools：对桩工具结构化输出做 JSON Schema（Draft 2020-12）校验 -->
+        <dependency>
+            <groupId>com.networknt</groupId>
+            <artifactId>json-schema-validator</artifactId>
+            <version>1.5.4</version>
+        </dependency>
         <!-- BM25（第二检索系统）：Lucene 内嵌全文检索（用于与 PG tsvector 做可归因对比） -->
         <dependency>
             <groupId>org.apache.lucene</groupId>

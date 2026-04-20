@@ -18,7 +18,7 @@
 - **可观测**：请求级 **MDC `traceId`**、响应头 **`X-Trace-Id`**；异步流式线程传递 MDC；Micrometer 计时 **`vagent.rag.retrieve`**、**`vagent.chat.stream`**。
 - **DashScope**：流式对话 **`vagent.llm.provider=dashscope`**；嵌入 **`vagent.embedding.provider=dashscope`**（默认 **1024** 维，须与库表一致）。
 - **MCP**：**`vagent.mcp.enabled`** 打开后提供 **`/api/v1/mcp/*`** 联调；**`vagent.orchestration.tool-intent-enabled`** 与 **`vagent.mcp.allowed-tools`** 控制主链路是否在 RAG 分支显式调用工具并把结果写入系统上下文，**`meta`** 可出现 **`toolUsed`**、**`toolName`** 等。
-- **评测接口**：**`POST /api/v1/eval/chat`**（snake_case、非流式）；**`vagent.eval.api.enabled=false`** 时整段 **`/api/v1/eval/**`** 返回 **404**；启用后校验 **`X-Eval-Token`**（配置为明文 token 的 **SHA-256 小写 hex**，勿把明文提交进仓库）。支持 debug 模式下的命中 id 透出限制、**`full-answer-enabled`** 聚合真实回答、与 **`vagent.guardrails.reflection.*`** 配合的一次性门控（Eval **`meta`** 中相关字段）；可选 **`vagent.guardrails.quote-only.*`** + 请求体 **`quote_only: true`** 的 **quote-only** 子串门控（语义见 **`plans/quote-only-guardrails.md`**）；**`tool_policy=stub`** 时的进程内桩工具（**`vagent.eval.api.stub-tools-enabled`**）；**`tool_policy=real`** 时在 **`vagent.mcp.enabled`** 且 **`McpClient`** 就绪下用 **`tool_stub_id`** 作为 MCP 工具名调用（否则澄清短路）；**`expected_behavior=tool`** 与非可执行工具策略的澄清短路。
+- **评测接口**：**`POST /api/v1/eval/chat`**（snake_case、非流式）；**`vagent.eval.api.enabled=false`** 时整段 **`/api/v1/eval/**`** 返回 **404**；启用后校验 **`X-Eval-Token`**（配置为明文 token 的 **SHA-256 小写 hex**，勿把明文提交进仓库）。支持 debug 模式下的命中 id 透出限制、**`full-answer-enabled`** 聚合真实回答、与 **`vagent.guardrails.reflection.*`** 配合的一次性门控（Eval **`meta`** 中相关字段）；可选 **`vagent.guardrails.quote-only.*`** + 请求体 **`quote_only: true`** 的 **quote-only** 子串门控（语义见 **`plans/quote-only-guardrails.md`**）；**`tool_policy=stub`** 时的进程内桩工具（**`vagent.eval.api.stub-tools-enabled`**）；**`tool_policy=real`** 时在 **`vagent.mcp.enabled`** 且 **`McpClient`** 就绪下用 **`tool_stub_id`** 作为 MCP 工具名同步调用（**`vagent.mcp.tool-call-timeout`**，与主链路一致；非 **`stub-tool-timeout-ms`**；否则澄清短路）；**`expected_behavior=tool`** 与非可执行工具策略的澄清短路。
 - **运维与演示**：Actuator（健康、指标等）；根目录 **Docker Compose**（PostgreSQL + pgvector）；**Dockerfile** 与 **`deploy/k8s/`** 演示清单。
 
 ---
@@ -138,7 +138,7 @@ docker compose up -d
 - **启用**：**`vagent.eval.api.enabled=true`**，并配置 **`vagent.eval.api.token-hash`**（明文 token 的 **SHA-256 小写 hex**；支持逗号分隔多哈希）。未启用时 **`/api/v1/eval/**`** 对外 **404**。  
 - **调试**：**`vagent.eval.api.debug-enabled=true`** 且请求 **`mode=EVAL_DEBUG`** 时，`meta` 才可能含明文 **`retrieval_hit_ids[]`**；可配合 **`allow-cidrs`**、**`trust-forwarded-headers`** 收紧。  
 - **行为**：与主线共享检索与门控；**`vagent.eval.api.full-answer-enabled=true`** 时可在通过门控后调用 **`LlmClient`** 生成正文（默认占位以降低 CI 成本与外网依赖）。  
-- **工具题**：**`tool_policy=stub`** 走进程内桩；**`tool_policy=real`** 在 MCP 就绪时用 **`tool_stub_id`** 调 **`McpClient`**（否则澄清）；详见 **`scripts/README-eval-kb.md`** §5。  
+- **工具题**：**`tool_policy=stub`** 走进程内桩（结构化 payload 默认经 **`classpath:/eval/stub-schemas/*.schema.json`** 校验，可用 **`vagent.eval.api.stub-tool-json-schema-validation-enabled`** 关闭）；**`tool_policy=real`** 在 MCP 就绪时用 **`tool_stub_id`** 调 **`McpClient`**（否则澄清）；详见 **`scripts/README-eval-kb.md`** §5。  
 - **Quote-only**：服务端 **`vagent.guardrails.quote-only.enabled=true`** 且 JSON **`"quote_only": true`** 时，对 **`behavior=answer`** 做检索正文子串核对；档位、与 **reflection** 的执行顺序、以及可选 **SSE 缓冲对齐**（**`quote-only.apply-to-sse-stream`**）见 **`plans/quote-only-guardrails.md`**。  
 - **数据脚本**：**`scripts/README-eval-kb.md`**；混合检索 / rerank A/B 与 compare 契约门禁见 **`scripts/README-hybrid-rerank-ab.md`**。
 
@@ -160,7 +160,8 @@ docker compose up -d
 
 **CI（本仓库）**  
 - **[.github/workflows/ci.yml](.github/workflows/ci.yml)**：在 **JDK 17** 下**分两阶段**跑测试：先 **`./mvnw -B test -P eval-smoke`**（仅 `com.vagent.eval` 包内评测相关用例），再 **`./mvnw -B test -P skip-eval-in-ci`**（其余模块，排除 eval 包），减轻单次 job 内连续启动多个 Spring 上下文时的内存压力；说明见 **`plans/eval-ci-smoke.md`**。  
-- **[.github/workflows/eval-remote.yml](.github/workflows/eval-remote.yml)**（可选）：定时或手动触发，向 **已可达的 vagent-eval** 提交一次完整 run；需在 GitHub **Repository secrets** 中配置 **`EVAL_BASE_URL`**、**`EVAL_RUN_PAYLOAD_JSON`**，可选 **`EVAL_HTTP_TOKEN`**。未配置时步骤会跳过且 job 仍为绿。公网 / 自托管 Runner / 隧道等说明见 **`plans/ci-eval-github-actions.md`**。  
+- **[.github/workflows/eval-remote.yml](.github/workflows/eval-remote.yml)**（可选）：定时或手动触发，向 **已可达的 vagent-eval** 提交一次完整 run；需在 GitHub **Repository secrets** 中配置 **`EVAL_BASE_URL`**、**`EVAL_RUN_PAYLOAD_JSON`**，可选 **`EVAL_HTTP_TOKEN`**。未配置时步骤会跳过且 job 仍为绿；配置后若 run 失败、报告门禁为 `false` 或轮询超时，job **失败**（退出码见 **`plans/ci-eval-github-actions.md`**）。工作流会尝试上传 **`eval-remote-report.json`** 为 artifact（有文件才上传）。公网 / 自托管 Runner / 隧道等说明见 **`plans/ci-eval-github-actions.md`**。
+- **[.github/workflows/hybrid-ab-compare.yml](.github/workflows/hybrid-ab-compare.yml)**（可选，P1-0b）：对已存在的 **`base_run_id` / `cand_run_id`** 跑 **`compare-eval-runs.ps1`**（**同一 `dataset_id`** + **`StrictContractGate`**）；需 **`EVAL_BASE_URL`**（及可选 **`EVAL_HTTP_TOKEN`**）。说明见 **`scripts/README-hybrid-rerank-ab.md`** §5。  
 - **评测回归留证**：`base` / `cand` run 与 compare 流程见 **`plans/regression-compare-standard-runbook.md`**。
 
 ---

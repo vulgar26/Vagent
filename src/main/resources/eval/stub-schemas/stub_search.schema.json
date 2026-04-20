@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vagent.local/eval/stub-schemas/stub_search.schema.json",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["kind", "restaurant_names"],
+  "properties": {
+    "kind": { "const": "eval_stub_search" },
+    "restaurant_names": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string", "minLength": 1 }
+    }
+  }
+}

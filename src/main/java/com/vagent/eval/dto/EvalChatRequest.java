@@ -4,6 +4,8 @@ import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 import com.fasterxml.jackson.databind.annotation.JsonNaming;
 import jakarta.validation.constraints.NotBlank;
 
+import java.util.Map;
+
 @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
 public class EvalChatRequest {
 
@@ -35,6 +37,12 @@ public class EvalChatRequest {
      * 子串核对（见 {@code plans/quote-only-guardrails.md}）。
      */
     private Boolean quoteOnly;
+
+    /**
+     * 可选：与 {@code tool_policy=real} 联用时作为 MCP {@code arguments}（不经 {@code query} 自动映射）。
+     * 仅评测接口（token 保护）使用；主链路仍由意图/服务端收敛参数。
+     */
+    private Map<String, Object> mcpToolArguments;
 
     public String getQuery() {
         return query;
@@ -98,6 +106,14 @@ public class EvalChatRequest {
 
     public void setQuoteOnly(Boolean quoteOnly) {
         this.quoteOnly = quoteOnly;
+    }
+
+    public Map<String, Object> getMcpToolArguments() {
+        return mcpToolArguments;
+    }
+
+    public void setMcpToolArguments(Map<String, Object> mcpToolArguments) {
+        this.mcpToolArguments = mcpToolArguments;
     }
 }
 

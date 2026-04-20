@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vagent.local/eval/stub-schemas/stub_weather.schema.json",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["kind", "city", "summary", "temp_min_c", "temp_max_c", "wind_bft"],
+  "properties": {
+    "kind": { "const": "eval_stub_weather" },
+    "city": { "type": "string", "minLength": 1 },
+    "summary": { "type": "string", "minLength": 1 },
+    "temp_min_c": { "type": "integer" },
+    "temp_max_c": { "type": "integer" },
+    "wind_bft": { "type": "integer", "minimum": 0, "maximum": 12 }
+  }
+}

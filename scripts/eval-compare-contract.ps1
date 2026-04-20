@@ -32,11 +32,16 @@ function Get-EvalRegressionContractRows {
 function Get-EvalRunObject {
     param(
         [Parameter(Mandatory)][string]$EvalBase,
-        [Parameter(Mandatory)][string]$RunId
+        [Parameter(Mandatory)][string]$RunId,
+        [hashtable]$HttpHeaders = @{}
     )
     $base = $EvalBase.TrimEnd('/')
     $u = "$base/api/v1/eval/runs/$RunId"
-    $raw = Invoke-WebRequest -Uri $u -Method Get -UseBasicParsing
+    $params = @{ Uri = $u; Method = 'Get'; UseBasicParsing = $true }
+    if ($null -ne $HttpHeaders -and $HttpHeaders.Count -gt 0) {
+        $params['Headers'] = $HttpHeaders
+    }
+    $raw = Invoke-WebRequest @params
     return ($raw.Content | ConvertFrom-Json)
 }
 
@@ -63,11 +68,12 @@ function Assert-EvalSameDatasetForCompare {
         [Parameter(Mandatory)][string]$EvalBase,
         [Parameter(Mandatory)][string]$BaseRunId,
         [Parameter(Mandatory)][string]$CandRunId,
-        [switch]$RequireSameDataset
+        [switch]$RequireSameDataset,
+        [hashtable]$HttpHeaders = @{}
     )
     try {
-        $br = Get-EvalRunObject -EvalBase $EvalBase -RunId $BaseRunId
-        $cr = Get-EvalRunObject -EvalBase $EvalBase -RunId $CandRunId
+        $br = Get-EvalRunObject -EvalBase $EvalBase -RunId $BaseRunId -HttpHeaders $HttpHeaders
+        $cr = Get-EvalRunObject -EvalBase $EvalBase -RunId $CandRunId -HttpHeaders $HttpHeaders
         $bd = Read-EvalDatasetIdFromRun -RunObj $br
         $cd = Read-EvalDatasetIdFromRun -RunObj $cr
         if ($RequireSameDataset -and ((-not $bd) -or (-not $cd))) {
