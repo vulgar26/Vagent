@@ -81,11 +81,46 @@ class EvalChatControllerFullAnswerMockMvcTest {
                 .andExpect(jsonPath("$.evidence_map[0].source_ids").isArray());
     }
 
+    @Test
+    void requiresCitationsButNoExtractableClaims_deniesWithEvidenceNotSupported() throws Exception {
+        when(knowledgeRetrieveService.searchForRag(any(UUID.class), any(String.class), any(RagProperties.class)))
+                .thenReturn(RagRetrieveResult.vectorOnly(singleHitNoNumericOrDate()));
+
+        String q = "hello-full-answer-no-claims";
+        String body =
+                """
+                {"query":"%s","mode":"EVAL","requires_citations":true}
+                """
+                        .formatted(q);
+
+        mockMvc.perform(
+                        post("/api/v1/eval/chat")
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .header("X-Eval-Token", TOKEN_PLAINTEXT)
+                                .content(body))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.behavior").value("deny"))
+                .andExpect(jsonPath("$.error_code").value("EVIDENCE_NOT_SUPPORTED"))
+                .andExpect(jsonPath("$.meta.evidence_map_required").value(true))
+                .andExpect(jsonPath("$.meta.evidence_map_outcome").value("missing"))
+                .andExpect(jsonPath("$.evidence_map").isArray())
+                .andExpect(jsonPath("$.evidence_map.length()").value(0));
+    }
+
     private static List<RetrieveHit> singleHit() {
         RetrieveHit h = new RetrieveHit();
         h.setChunkId("chunk-a");
         h.setDocumentId("doc-a");
         h.setContent("snippet body: price is 42");
+        h.setDistance(0.05);
+        return new ArrayList<>(List.of(h));
+    }
+
+    private static List<RetrieveHit> singleHitNoNumericOrDate() {
+        RetrieveHit h = new RetrieveHit();
+        h.setChunkId("chunk-b");
+        h.setDocumentId("doc-b");
+        h.setContent("snippet body without numbers or dates");
         h.setDistance(0.05);
         return new ArrayList<>(List.of(h));
     }

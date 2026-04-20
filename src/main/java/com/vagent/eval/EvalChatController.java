@@ -352,14 +352,27 @@ public class EvalChatController {
         maybeAttachDebugRetrievalHitIds(meta, mode, httpRequest, candidates);
         enforceRetrievalHitIdBoundary(meta, mode, httpRequest);
 
+        List<EvalChatResponse.EvidenceMapItem> evidenceMap = List.of();
+        boolean evidenceMapRequired = Boolean.TRUE.equals(request.getRequiresCitations());
+        if (evidenceMapRequired && "answer".equals(behavior)) {
+            evidenceMap = buildEvidenceMap(answer, sources);
+            if (evidenceMap.isEmpty()) {
+                // P1-S1：requires_citations=true 时必须提供可规则验证的 evidence_map，否则视为不被证据支撑。
+                behavior = "deny";
+                errorCode = "EVIDENCE_NOT_SUPPORTED";
+                answer = "无法从回答与引用片段中生成可验证的证据映射，请改为仅输出可被引用片段直接支撑的数字/日期等结论。";
+                meta.put("guardrail_triggered", true);
+                meta.put("evidence_map_required", true);
+                meta.put("evidence_map_outcome", "missing");
+            } else {
+                meta.put("evidence_map_required", true);
+                meta.put("evidence_map_outcome", "ok");
+            }
+        }
+
         EvalBehaviorMetaSync.applyRootToMeta(meta, behavior, errorCode);
 
         long latencyMs = (System.nanoTime() - startNs) / 1_000_000L;
-
-        List<EvalChatResponse.EvidenceMapItem> evidenceMap = List.of();
-        if (Boolean.TRUE.equals(request.getRequiresCitations()) && "answer".equals(behavior)) {
-            evidenceMap = buildEvidenceMap(answer, sources);
-        }
 
         return new EvalChatResponse(
                 answer,
