@@ -318,6 +318,7 @@ public class EvalChatController {
         }
 
         // Reflection（引用/低置信）先于 quote-only：若已非 answer，不再跑 quote-only。
+        EvalQuoteOnlyGuard.QuoteOnlyOutcome quoteOutcomeForEvidence = EvalQuoteOnlyGuard.QuoteOnlyOutcome.none();
         if (shouldRunQuoteOnly(request, candidates, behavior)) {
             String qs =
                     guardrailsProperties.getQuoteOnly().getStrictness() != null
@@ -335,8 +336,8 @@ public class EvalChatController {
             }
             EvalQuoteOnlyGuard.Scope quoteScope =
                     EvalQuoteOnlyGuard.Scope.fromConfig(guardrailsProperties.getQuoteOnly().getScope());
-            Optional<EvalReflectionOneShotGuard.Patch> quotePatch =
-                    EvalQuoteOnlyGuard.evaluate(
+            quoteOutcomeForEvidence =
+                    EvalQuoteOnlyGuard.evaluateWithOutcome(
                             EvalQuoteOnlyGuard.Strictness.fromConfig(guardrailsProperties.getQuoteOnly().getStrictness()),
                             quoteScope,
                             answer,
@@ -344,6 +345,7 @@ public class EvalChatController {
                             quoteScope == EvalQuoteOnlyGuard.Scope.DIGITS_PLUS_TOKENS_PLUS_EVIDENCE
                                     ? sources
                                     : null);
+            Optional<EvalReflectionOneShotGuard.Patch> quotePatch = quoteOutcomeForEvidence.patch();
             if (quotePatch.isPresent()) {
                 EvalReflectionOneShotGuard.Patch p = quotePatch.get();
                 answer = p.answer();
@@ -364,13 +366,21 @@ public class EvalChatController {
         List<EvalChatResponse.EvidenceMapItem> evidenceMap = List.of();
         boolean evidenceMapRequired = Boolean.TRUE.equals(request.getRequiresCitations());
         if (evidenceMapRequired && "answer".equals(behavior)) {
-            evidenceMap = EvidenceMapExtractor.buildEvidenceMap(answer, sources);
+            final EvalQuoteOnlyGuard.QuoteOnlyOutcome quoteOutcomeSnapshot = quoteOutcomeForEvidence;
+            final String answerForEvidence = answer;
+            final List<EvalChatResponse.Source> sourcesForEvidence = sources;
+            evidenceMap =
+                    quoteOutcomeSnapshot.plusEvidenceMapSnapshot()
+                            .filter(list -> !list.isEmpty())
+                            .orElseGet(() -> EvidenceMapExtractor.buildEvidenceMap(answerForEvidence, sourcesForEvidence));
             if (evidenceMap.isEmpty()) {
                 // P1-S1：requires_citations=true 时必须提供可规则验证的 evidence_map，否则视为不被证据支撑。
                 behavior = "deny";
                 errorCode = "EVIDENCE_NOT_SUPPORTED";
                 answer = "无法从回答与引用片段中生成可验证的证据映射，请改为仅输出可被引用片段直接支撑的数字/日期等结论。";
                 meta.put("guardrail_triggered", true);
+                meta.put("reflection_outcome", "deny");
+                meta.put("reflection_reasons", List.of("EVIDENCE_MAP_EMPTY"));
                 meta.put("evidence_map_required", true);
                 meta.put("evidence_map_outcome", "missing");
             } else {

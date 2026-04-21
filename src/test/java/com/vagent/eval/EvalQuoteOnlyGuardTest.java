@@ -119,6 +119,21 @@ class EvalQuoteOnlyGuardTest {
     }
 
     @Test
+    void evaluateWithOutcome_plusEvidence_exposesSnapshotForReuse() {
+        EvalChatResponse.Source src = new EvalChatResponse.Source("id1", null, "含税价 1200 元 详见条款");
+        EvalQuoteOnlyGuard.QuoteOnlyOutcome out =
+                EvalQuoteOnlyGuard.evaluateWithOutcome(
+                        EvalQuoteOnlyGuard.Strictness.RELAXED,
+                        EvalQuoteOnlyGuard.Scope.DIGITS_PLUS_TOKENS_PLUS_EVIDENCE,
+                        "推荐含税价 1200 元",
+                        List.of("含税价 1200 元 详见条款"),
+                        List.of(src));
+        assertThat(out.patch()).isEmpty();
+        assertThat(out.plusEvidenceMapSnapshot()).isPresent();
+        assertThat(out.plusEvidenceMapSnapshot().orElseThrow()).isNotEmpty();
+    }
+
+    @Test
     void scopePlusEvidence_passesWhenNumericClaimBound() {
         EvalChatResponse.Source src = new EvalChatResponse.Source("id1", null, "含税价 1200 元 详见条款");
         Optional<EvalReflectionOneShotGuard.Patch> p =

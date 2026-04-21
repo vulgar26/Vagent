@@ -20,6 +20,8 @@
 
 当 **`vagent.guardrails.reflection.enabled=true`** 且请求 **`quote_only: true`** 同时满足各自前提时，`EvalChatController` **先**执行 `EvalReflectionOneShotGuard`（引用闭环、低置信超长），**仅当**根级 **`behavior` 仍为 `answer`** 时再执行 `EvalQuoteOnlyGuard`。若 reflection 已改为 `deny`/`clarify`，**不再**跑 quote-only，避免重复门控与矛盾 `meta`。
 
+其后 **`requires_citations=true`** 时：在仍为 **`answer`** 的前提下生成 **`evidence_map[]`**；若 **`scope=digits_plus_tokens_plus_evidence`** 且 quote-only 已执行 C 层，则复用同一次 **`EvidenceMapExtractor.buildEvidenceMap`** 的结果（`EvalQuoteOnlyGuard.evaluateWithOutcome`），避免对同一 `answer`/`sources` 二次抽取。`requires_citations` 且无法生成证据时根级 **`error_code=EVIDENCE_NOT_SUPPORTED`**，**`meta.reflection_outcome=deny`**、**`meta.reflection_reasons`** 含 **`EVIDENCE_MAP_EMPTY`**（与 quote-only 门控的 `reflection_*` 键名对齐，便于对账）。
+
 ## 主对话 SSE（`apply-to-sse-stream`）
 
 除 eval 接口外，主链路 **`RagStreamChatService`** 可选对齐同一套 `EvalQuoteOnlyGuard` 判定（corpus 来自当次 RAG 命中的 `RetrieveHit.content`）。

@@ -99,11 +99,7 @@ public final class EvalQuoteOnlyGuard {
     }
 
     /**
-     * @param strictness 严格度档位
-     * @param scope      启用 A/B/C 哪几层
-     * @param answer     拟返回正文
-     * @param corpusHits 候选命中正文（与检索 top-N 同源，通常来自 chunk content）
-     * @param sources    与评测 {@code sources[]} 同源；仅 {@link Scope#DIGITS_PLUS_TOKENS_PLUS_EVIDENCE} 需要，可为 {@code null}
+     * 与 {@link #evaluateWithOutcome} 相同，仅返回 patch（兼容既有调用方）。
      */
     public static Optional<EvalReflectionOneShotGuard.Patch> evaluate(
             Strictness strictness,
@@ -111,42 +107,76 @@ public final class EvalQuoteOnlyGuard {
             String answer,
             List<String> corpusHits,
             List<EvalChatResponse.Source> sources) {
+        return evaluateWithOutcome(strictness, scope, answer, corpusHits, sources).patch();
+    }
+
+    /**
+     * @param strictness 严格度档位
+     * @param scope      启用 A/B/C 哪几层
+     * @param answer     拟返回正文
+     * @param corpusHits 候选命中正文（与检索 top-N 同源，通常来自 chunk content）
+     * @param sources    与评测 {@code sources[]} 同源；仅 {@link Scope#DIGITS_PLUS_TOKENS_PLUS_EVIDENCE} 需要，可为 {@code null}
+     * @return {@code plusEvidenceMapSnapshot} 在 {@link Scope#DIGITS_PLUS_TOKENS_PLUS_EVIDENCE} 且执行了 {@code buildEvidenceMap} 时非空，供 {@code requires_citations} 路径复用
+     */
+    public static QuoteOnlyOutcome evaluateWithOutcome(
+            Strictness strictness,
+            Scope scope,
+            String answer,
+            List<String> corpusHits,
+            List<EvalChatResponse.Source> sources) {
         if (corpusHits == null || corpusHits.isEmpty()) {
-            return Optional.empty();
+            return QuoteOnlyOutcome.none();
         }
         String corpus = joinCorpus(corpusHits);
         if (corpus.isEmpty()) {
-            return Optional.empty();
+            return QuoteOnlyOutcome.none();
         }
         Scope s = scope != null ? scope : Scope.DIGITS_PLUS_TOKENS;
         String a = answer != null ? answer : "";
 
         Optional<String> relaxedFail = checkRelaxed(a, corpus);
         if (relaxedFail.isPresent()) {
-            return patch(relaxedFail.get());
+            return new QuoteOnlyOutcome(patch(relaxedFail.get()), Optional.empty());
         }
         if (s == Scope.DIGITS_ONLY) {
-            return Optional.empty();
+            return QuoteOnlyOutcome.none();
         }
 
         if (strictness != Strictness.RELAXED) {
             Optional<String> moderateFail = checkModerateBeyondRelaxed(a, corpus);
             if (moderateFail.isPresent()) {
-                return patch(moderateFail.get());
+                return new QuoteOnlyOutcome(patch(moderateFail.get()), Optional.empty());
             }
         }
         if (strictness == Strictness.STRICT) {
             Optional<String> strictFail = checkStrictAsciiWords(a, corpus);
             if (strictFail.isPresent()) {
-                return patch(strictFail.get());
+                return new QuoteOnlyOutcome(patch(strictFail.get()), Optional.empty());
             }
         }
 
         if (s == Scope.DIGITS_PLUS_TOKENS_PLUS_EVIDENCE) {
-            return checkEvidenceBinding(a, sources).flatMap(EvalQuoteOnlyGuard::patch);
+            EvidenceBindingOutcome bind = checkEvidenceBindingWithMap(a, sources);
+            return new QuoteOnlyOutcome(
+                    bind.failureDetail().flatMap(EvalQuoteOnlyGuard::patch), bind.materializedMap());
         }
-        return Optional.empty();
+        return QuoteOnlyOutcome.none();
     }
+
+    /**
+     * {@link #evaluateWithOutcome} 的返回值：{@code plusEvidenceMapSnapshot} 仅在 plus-evidence 路径且实际调用过
+     * {@link EvidenceMapExtractor#buildEvidenceMap} 时非空（可能因失败仍附带，便于排障）。
+     */
+    public record QuoteOnlyOutcome(
+            Optional<EvalReflectionOneShotGuard.Patch> patch,
+            Optional<List<EvalChatResponse.EvidenceMapItem>> plusEvidenceMapSnapshot) {
+        public static QuoteOnlyOutcome none() {
+            return new QuoteOnlyOutcome(Optional.empty(), Optional.empty());
+        }
+    }
+
+    private record EvidenceBindingOutcome(
+            Optional<String> failureDetail, Optional<List<EvalChatResponse.EvidenceMapItem>> materializedMap) {}
 
     private static Optional<EvalReflectionOneShotGuard.Patch> patch(String reasonDetail) {
         boolean evidenceBind = reasonDetail != null && reasonDetail.startsWith("evidence_");
@@ -189,31 +219,31 @@ public final class EvalQuoteOnlyGuard {
         return List.copyOf(out);
     }
 
-    /** 证据绑定层：每个长度 ≥3 的数字串必须在 {@link EvidenceMapExtractor} 产出的 numeric 条目中可比对命中。 */
-    private static Optional<String> checkEvidenceBinding(
+    /**
+     * 证据绑定层：每个长度 ≥3 的数字串必须在 {@link EvidenceMapExtractor} 产出的 numeric 条目中可比对命中；
+     * 返回构建过的 {@code evidence_map} 列表供 {@code requires_citations} 复用（避免二次 {@code buildEvidenceMap}）。
+     */
+    private static EvidenceBindingOutcome checkEvidenceBindingWithMap(
             String answer, List<EvalChatResponse.Source> sources) {
-        if (sources == null || sources.isEmpty()) {
-            Matcher dm = DIGIT_RUN.matcher(answer);
-            if (dm.find()) {
-                return Optional.of("evidence_sources_missing");
-            }
-            return Optional.empty();
-        }
-        List<EvalChatResponse.EvidenceMapItem> map = EvidenceMapExtractor.buildEvidenceMap(answer, sources);
-        Matcher m = DIGIT_RUN.matcher(answer);
+        Matcher digitRuns = DIGIT_RUN.matcher(answer);
         LinkedHashSet<String> runs = new LinkedHashSet<>();
-        while (m.find()) {
-            runs.add(m.group());
+        while (digitRuns.find()) {
+            runs.add(digitRuns.group());
         }
         if (runs.isEmpty()) {
-            return Optional.empty();
+            return new EvidenceBindingOutcome(Optional.empty(), Optional.empty());
         }
+        if (sources == null || sources.isEmpty()) {
+            return new EvidenceBindingOutcome(Optional.of("evidence_sources_missing"), Optional.empty());
+        }
+        List<EvalChatResponse.EvidenceMapItem> map = EvidenceMapExtractor.buildEvidenceMap(answer, sources);
+        List<EvalChatResponse.EvidenceMapItem> mapCopy = List.copyOf(map);
         boolean anyNumericItem =
                 map.stream()
                         .anyMatch(
                                 it -> it != null && "numeric".equals(it.getClaimType()));
         if (!anyNumericItem) {
-            return Optional.of("evidence_map_missing_numeric");
+            return new EvidenceBindingOutcome(Optional.of("evidence_map_missing_numeric"), Optional.of(mapCopy));
         }
         for (String run : runs) {
             String norm = EvidenceMapExtractor.normalizeNumericClaimValue(run);
@@ -221,10 +251,11 @@ public final class EvalQuoteOnlyGuard {
                 continue;
             }
             if (!numericEvidenceExplainsNorm(map, norm)) {
-                return Optional.of("evidence_missing_digit:" + run);
+                return new EvidenceBindingOutcome(
+                        Optional.of("evidence_missing_digit:" + run), Optional.of(mapCopy));
             }
         }
-        return Optional.empty();
+        return new EvidenceBindingOutcome(Optional.empty(), Optional.of(mapCopy));
     }
 
     /** C 层：数字串归一化后与某条 numeric {@code claim_value} 一致即视为已绑定（与 {@link EvidenceMapExtractor} 切分一致）。 */

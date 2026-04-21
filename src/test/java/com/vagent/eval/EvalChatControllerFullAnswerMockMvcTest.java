@@ -101,6 +101,8 @@ class EvalChatControllerFullAnswerMockMvcTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.behavior").value("deny"))
                 .andExpect(jsonPath("$.error_code").value("EVIDENCE_NOT_SUPPORTED"))
+                .andExpect(jsonPath("$.meta.reflection_outcome").value("deny"))
+                .andExpect(jsonPath("$.meta.reflection_reasons[0]").value("EVIDENCE_MAP_EMPTY"))
                 .andExpect(jsonPath("$.meta.evidence_map_required").value(true))
                 .andExpect(jsonPath("$.meta.evidence_map_outcome").value("missing"))
                 .andExpect(jsonPath("$.evidence_map").isArray())
