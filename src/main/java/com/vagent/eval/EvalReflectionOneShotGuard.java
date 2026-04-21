@@ -87,7 +87,7 @@ public final class EvalReflectionOneShotGuard {
                 new Patch(
                         "低置信场景下回答超过长度上限，已拒绝输出。",
                         "deny",
-                        "GUARDRAIL_TRIGGERED",
+                        EvalErrorCodes.GUARDRAIL_TRIGGERED,
                         "deny",
                         List.of("ANSWER_EXCEEDS_LIMIT_UNDER_LOW_CONFIDENCE")));
     }

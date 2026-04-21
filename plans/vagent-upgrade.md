@@ -11,7 +11,7 @@
 | 代号 | 主题 | 缺口摘要 | 备注 |
 |------|------|----------|------|
 | **A** | SSE 与评测 **meta** 对等 | 用户侧 SSE 首帧曾缺 **`retrieval_hit_id_hashes`** / **`canonical_hit_id_scheme`** / **`retrieval_candidate_*`** 与评测对齐 | **A-1**：membership 形状 + 可选哈希（**`sse-membership-hmac-secret`**，非 **E7** token）。**A-2**：**`chat_stream_channel`**、**`retrieval_membership_top_n` / `hashes_enabled` / `hashes_count`**；RAG 有命中且走 LLM 时补 **`low_confidence=false`**。 |
-| **B** | 门控与 **error_code** | `rag/low_conf` 与 **`SAFETY_QUERY_GATE`** 归因并存；全路径 **error_code SSOT**、**`vagent.rag.low-confidence-*` 配置绑定**仍可选 | 报表口径与配置见「已知缺口」 |
+| **B** | 门控与 **error_code** | `rag/low_conf` 与 **`SAFETY_QUERY_GATE`** 归因并存；全路径 **error_code/低置信枚举 SSOT（常量类）**、**`vagent.rag.low-confidence-*` 配置绑定**仍可选 | 报表口径与配置见「已知缺口」 |
 | **C** | Hybrid / rerank | **外部 rerank 供应商**未接入（`rerank_outcome=skipped`） | A/B compare 流程见 **P1-0b** |
 | **D** | 工具治理 **P1-4** | 缺完整 **`ToolRegistry`**、MCP **出参** schema、审计表、配额 | 入参 schema 已有部分（echo/ping） |
 | **E** | Reflection **P0-2 续** | **toolConflictPolicy**、数值冲突白名单等未实现 | 规则型 `reflection_*` 已有 |
@@ -108,7 +108,7 @@
 - **`evidenceMap[]`（P1-5）**：已实现服务端规则提取（目前覆盖 **numeric/date**；numeric 为「千分位 / 小数 / 连续位数≥2」优先级 span，避免四位整数被误切）并在 `requires_citations=true && behavior=answer` 时返回 `evidence_map[]`；`capabilities.guardrails.evidence_map=true`。
 - **SSE 正常 RAG 命中**：首帧 **`chat_stream_channel=sse`**；在 **`retrieveTrace != null`** 时写入 **`canonical_hit_id_scheme`**、**`retrieval_candidate_total`**、**`retrieval_candidate_limit_n`**、**`retrieval_hit_id_hashes[]`**、**`retrieval_membership_*`**（见上 A-2）；SSE 哈希 k_case **非** `X-Eval-Token`。未配置 **`sse-membership-hmac-secret`** 时哈希列表为 **`[]`**。安全短路仍走 **`applySafetyShortCircuitMeta`** 占位，并写 **`retrieval_membership_top_n`** 等对齐键。
 - **P1-4 主链路工具治理（D1–D4）**：**无**完整 **`ToolRegistry`（版本/resultSchema/审计/配额）**；已有 **`echo`/`ping` 入参** JSON Schema 与 **`TOOL_SCHEMA_INVALID`**（见 §P1-4 块引用）；**无** MCP **出参** schema、专用审计表 / 配额限流。
-- **P1-0 后续「error_code 字面」**：检索前 **`EvalChatSafetyGate` 的 `clarify`** 已使用 **`GUARDRAIL_TRIGGERED`**（**非** `RETRIEVE_LOW_CONFIDENCE`）；其余路径若要做「全枚举 SSOT 常量类」仍可单开任务。
+- **P1-0 后续「error_code 字面」**：检索前 **`EvalChatSafetyGate` 的 `clarify`** 已使用 **`GUARDRAIL_TRIGGERED`**（**非** `RETRIEVE_LOW_CONFIDENCE`）；B-3 起把核心 `error_code` / `low_confidence_*` 字段收口为 SSOT 常量类（避免散落字符串）。
 
 #### 未在代码中实现（文档仍为建议项）
 

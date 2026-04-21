@@ -116,9 +116,9 @@ public final class RagPostRetrieveGate {
                         new ShortCircuit(
                                 MSG_EMPTY_HITS,
                                 "clarify",
-                                "RETRIEVE_EMPTY",
+                                com.vagent.eval.EvalErrorCodes.RETRIEVE_EMPTY,
                                 true,
-                                List.of("EMPTY_HITS")));
+                                List.of(com.vagent.eval.EvalLowConfidence.Reasons.EMPTY_HITS)));
             }
             if (emptyHitsBehavior == EmptyHitsBehavior.NO_LLM) {
                 String msg =
@@ -126,7 +126,12 @@ public final class RagPostRetrieveGate {
                                 ? configuredEmptyNoLlmMessage.trim()
                                 : MSG_EMPTY_HITS;
                 return Optional.of(
-                        new ShortCircuit(msg, "clarify", "RETRIEVE_EMPTY", true, List.of("EMPTY_HITS")));
+                        new ShortCircuit(
+                                msg,
+                                "clarify",
+                                com.vagent.eval.EvalErrorCodes.RETRIEVE_EMPTY,
+                                true,
+                                List.of(com.vagent.eval.EvalLowConfidence.Reasons.EMPTY_HITS)));
             }
             return Optional.empty();
         }
@@ -147,8 +152,17 @@ public final class RagPostRetrieveGate {
                 return Optional.empty();
             }
             String behavior = lowConfidenceBehavior == LowConfidenceBehavior.DENY ? "deny" : "clarify";
-            String msg = reasons.contains("QUERY_TOO_SHORT") ? MSG_QUERY_TOO_SHORT : MSG_LOW_CONFIDENCE;
-            return Optional.of(new ShortCircuit(msg, behavior, "RETRIEVE_LOW_CONFIDENCE", true, List.copyOf(reasons)));
+            String msg =
+                    reasons.contains(com.vagent.eval.EvalLowConfidence.Reasons.QUERY_TOO_SHORT)
+                            ? MSG_QUERY_TOO_SHORT
+                            : MSG_LOW_CONFIDENCE;
+            return Optional.of(
+                    new ShortCircuit(
+                            msg,
+                            behavior,
+                            com.vagent.eval.EvalErrorCodes.RETRIEVE_LOW_CONFIDENCE,
+                            true,
+                            List.copyOf(reasons)));
         }
 
         return Optional.empty();
@@ -171,7 +185,7 @@ public final class RagPostRetrieveGate {
                         : lowConfidenceRuleSet;
         ArrayList<String> reasons = new ArrayList<>(2);
         if (rules.contains(LowConfidenceRule.QUERY_TOO_SHORT) && q.length() < minQueryChars) {
-            reasons.add("QUERY_TOO_SHORT");
+            reasons.add(com.vagent.eval.EvalLowConfidence.Reasons.QUERY_TOO_SHORT);
             return List.copyOf(reasons);
         }
         boolean distLow =
@@ -181,20 +195,22 @@ public final class RagPostRetrieveGate {
                 rules.contains(LowConfidenceRule.VAGUE_QUERY_REFERENCE)
                         && isVagueSubstringLowConfidence(q, lowConfidenceQuerySubstrings);
         if (distLow) {
-            reasons.add("WEAK_TOP_HIT_DISTANCE");
+            reasons.add(com.vagent.eval.EvalLowConfidence.Reasons.WEAK_TOP_HIT_DISTANCE);
         }
         if (vagueLow) {
-            reasons.add("VAGUE_QUERY_REFERENCE");
+            reasons.add(com.vagent.eval.EvalLowConfidence.Reasons.VAGUE_QUERY_REFERENCE);
         }
         return reasons.isEmpty() ? List.of() : List.copyOf(reasons);
     }
 
     /** 0 命中且允许走 LLM 时，写入 SSE/eval 风格 meta 的前缀字段。 */
     public static void applyZeroHitsAllowLlmMeta(java.util.Map<String, Object> meta) {
-        meta.put("retrieve_hit_count", 0);
-        meta.put("low_confidence", true);
-        meta.put("low_confidence_reasons", List.of("EMPTY_HITS"));
-        meta.put("low_confidence_gate", "empty_hits_allow_llm");
+        meta.put(com.vagent.eval.EvalMetaKeys.RETRIEVE_HIT_COUNT, 0);
+        meta.put(com.vagent.eval.EvalMetaKeys.LOW_CONFIDENCE, true);
+        meta.put(
+                com.vagent.eval.EvalMetaKeys.LOW_CONFIDENCE_REASONS,
+                List.of(com.vagent.eval.EvalLowConfidence.Reasons.EMPTY_HITS));
+        meta.put(com.vagent.eval.EvalMetaKeys.LOW_CONFIDENCE_GATE, com.vagent.eval.EvalLowConfidence.Gates.EMPTY_HITS_ALLOW_LLM);
     }
 
     private static boolean isDistanceLowConfidence(List<RetrieveHit> orderedHits, Double threshold) {

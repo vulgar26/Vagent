@@ -189,7 +189,7 @@ public final class EvalQuoteOnlyGuard {
                 new EvalReflectionOneShotGuard.Patch(
                         msg,
                         "deny",
-                        "GUARDRAIL_TRIGGERED",
+                        EvalErrorCodes.GUARDRAIL_TRIGGERED,
                         "deny",
                         List.of(tag, reasonDetail)));
     }

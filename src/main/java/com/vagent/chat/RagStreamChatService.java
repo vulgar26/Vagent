@@ -333,18 +333,24 @@ public class RagStreamChatService {
                                     ragPostRetrieveGateSettings.lowConfidenceQuerySubstrings(),
                                     RagPostRetrieveGate.parseLowConfidenceRuleSet(ragProperties.getLowConfidenceRuleSet()));
                     if (!reasons.isEmpty()) {
-                        metaExtra.put("low_confidence", true);
-                        metaExtra.put("low_confidence_reasons", reasons);
-                        metaExtra.put("low_confidence_gate", "post_retrieve_allow_llm");
+                        metaExtra.put(com.vagent.eval.EvalMetaKeys.LOW_CONFIDENCE, true);
+                        metaExtra.put(com.vagent.eval.EvalMetaKeys.LOW_CONFIDENCE_REASONS, reasons);
+                        metaExtra.put(
+                                com.vagent.eval.EvalMetaKeys.LOW_CONFIDENCE_GATE,
+                                com.vagent.eval.EvalLowConfidence.Gates.POST_RETRIEVE_ALLOW_LLM);
                     } else {
-                        metaExtra.put("low_confidence", false);
-                        metaExtra.put("low_confidence_reasons", List.of());
-                        metaExtra.put("low_confidence_gate", "none");
+                        metaExtra.put(com.vagent.eval.EvalMetaKeys.LOW_CONFIDENCE, false);
+                        metaExtra.put(com.vagent.eval.EvalMetaKeys.LOW_CONFIDENCE_REASONS, List.of());
+                        metaExtra.put(
+                                com.vagent.eval.EvalMetaKeys.LOW_CONFIDENCE_GATE,
+                                com.vagent.eval.EvalLowConfidence.Gates.NONE);
                     }
                 } else {
-                    metaExtra.put("low_confidence", false);
-                    metaExtra.put("low_confidence_reasons", List.of());
-                    metaExtra.put("low_confidence_gate", "none");
+                    metaExtra.put(com.vagent.eval.EvalMetaKeys.LOW_CONFIDENCE, false);
+                    metaExtra.put(com.vagent.eval.EvalMetaKeys.LOW_CONFIDENCE_REASONS, List.of());
+                    metaExtra.put(
+                            com.vagent.eval.EvalMetaKeys.LOW_CONFIDENCE_GATE,
+                            com.vagent.eval.EvalLowConfidence.Gates.NONE);
                 }
             }
             boolean sseBufferedQuoteOnly =
@@ -494,19 +500,25 @@ public class RagStreamChatService {
 
     private static void applySafetyShortCircuitMeta(
             Map<String, Object> meta, EvalChatSafetyGate.Outcome outcome) {
-        meta.put("canonical_hit_id_scheme", "kb_chunk_id");
-        meta.put("retrieval_candidate_limit_n", 0);
-        meta.put("retrieval_candidate_total", 0);
-        meta.put("retrieval_hit_id_hashes", List.of());
-        meta.put("eval_safety_rule_id", outcome.ruleId());
+        meta.put(com.vagent.eval.EvalMetaKeys.CANONICAL_HIT_ID_SCHEME, "kb_chunk_id");
+        meta.put(com.vagent.eval.EvalMetaKeys.RETRIEVAL_CANDIDATE_LIMIT_N, 0);
+        meta.put(com.vagent.eval.EvalMetaKeys.RETRIEVAL_CANDIDATE_TOTAL, 0);
+        meta.put(com.vagent.eval.EvalMetaKeys.RETRIEVAL_HIT_ID_HASHES, List.of());
+        meta.put(com.vagent.eval.EvalMetaKeys.EVAL_SAFETY_RULE_ID, outcome.ruleId());
         if ("deny".equals(outcome.behavior())) {
-            meta.put("low_confidence", false);
-            meta.put("low_confidence_reasons", List.of());
-            meta.put("low_confidence_gate", "pre_retrieval_safety");
+            meta.put(com.vagent.eval.EvalMetaKeys.LOW_CONFIDENCE, false);
+            meta.put(com.vagent.eval.EvalMetaKeys.LOW_CONFIDENCE_REASONS, List.of());
+            meta.put(
+                    com.vagent.eval.EvalMetaKeys.LOW_CONFIDENCE_GATE,
+                    com.vagent.eval.EvalLowConfidence.Gates.PRE_RETRIEVAL_SAFETY);
         } else {
-            meta.put("low_confidence", true);
-            meta.put("low_confidence_reasons", List.of("SAFETY_QUERY_GATE"));
-            meta.put("low_confidence_gate", "pre_retrieval_safety");
+            meta.put(com.vagent.eval.EvalMetaKeys.LOW_CONFIDENCE, true);
+            meta.put(
+                    com.vagent.eval.EvalMetaKeys.LOW_CONFIDENCE_REASONS,
+                    List.of(com.vagent.eval.EvalLowConfidence.Reasons.SAFETY_QUERY_GATE));
+            meta.put(
+                    com.vagent.eval.EvalMetaKeys.LOW_CONFIDENCE_GATE,
+                    com.vagent.eval.EvalLowConfidence.Gates.PRE_RETRIEVAL_SAFETY);
         }
     }
 
@@ -520,9 +532,11 @@ public class RagStreamChatService {
         try {
             int hc = retrieveTrace != null ? retrieveTrace.hits().size() : 0;
             Map<String, Object> metaExtra = new LinkedHashMap<>();
-            metaExtra.put("low_confidence", gate.lowConfidence());
-            metaExtra.put("low_confidence_reasons", gate.lowConfidenceReasons());
-            metaExtra.put("low_confidence_gate", "post_retrieve_gate");
+            metaExtra.put(com.vagent.eval.EvalMetaKeys.LOW_CONFIDENCE, gate.lowConfidence());
+            metaExtra.put(com.vagent.eval.EvalMetaKeys.LOW_CONFIDENCE_REASONS, gate.lowConfidenceReasons());
+            metaExtra.put(
+                    com.vagent.eval.EvalMetaKeys.LOW_CONFIDENCE_GATE,
+                    com.vagent.eval.EvalLowConfidence.Gates.POST_RETRIEVE_GATE);
             EvalBehaviorMetaSync.applyRootToMeta(metaExtra, gate.behavior(), gate.errorCode());
             sendMeta(
                     emitter,
@@ -679,7 +693,7 @@ public class RagStreamChatService {
         meta.put("type", "meta");
         meta.put("taskId", taskId);
         meta.put("hitCount", hitCount);
-        meta.put("retrieve_hit_count", hitCount);
+        meta.put(com.vagent.eval.EvalMetaKeys.RETRIEVE_HIT_COUNT, hitCount);
         meta.put("branch", branch);
         meta.put("chat_stream_channel", "sse");
         if (retrieveTrace != null) {
@@ -713,8 +727,10 @@ public class RagStreamChatService {
                 meta.put(e.getKey(), e.getValue());
             }
         }
-        if (toolErrorCode != null && !toolErrorCode.isBlank() && !meta.containsKey("error_code")) {
-            meta.put("error_code", toolErrorCode);
+        if (toolErrorCode != null
+                && !toolErrorCode.isBlank()
+                && !meta.containsKey(com.vagent.eval.EvalMetaKeys.ERROR_CODE)) {
+            meta.put(com.vagent.eval.EvalMetaKeys.ERROR_CODE, toolErrorCode);
         }
         sendEvent(emitter, meta);
     }

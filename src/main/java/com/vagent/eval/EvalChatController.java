@@ -153,7 +153,7 @@ public class EvalChatController {
         }
 
         if (!tokenVerifier.verifyOrFalse(xEvalToken)) {
-            EvalBehaviorMetaSync.applyRootToMeta(meta, "deny", "AUTH");
+            EvalBehaviorMetaSync.applyRootToMeta(meta, "deny", EvalErrorCodes.AUTH);
             enforceRetrievalHitIdBoundary(meta, mode, httpRequest);
             long latencyMs = (System.nanoTime() - startNs) / 1_000_000L;
             return new EvalChatResponse(
@@ -164,7 +164,7 @@ public class EvalChatController {
                     meta,
                     List.of(),
                     List.of(),
-                    "AUTH");
+                    EvalErrorCodes.AUTH);
         }
 
         String q = request.getQuery() == null ? "" : request.getQuery().trim();
@@ -207,12 +207,12 @@ public class EvalChatController {
         List<EvalChatResponse.Source> sources = List.of();
 
         if (!retrievalSupported || knowledgeRetrieveService == null) {
-            meta.put("retrieve_hit_count", 0);
-            meta.put("low_confidence", false);
-            meta.put("low_confidence_reasons", List.of());
-            meta.put("low_confidence_gate", "none");
+            meta.put(EvalMetaKeys.RETRIEVE_HIT_COUNT, 0);
+            meta.put(EvalMetaKeys.LOW_CONFIDENCE, false);
+            meta.put(EvalMetaKeys.LOW_CONFIDENCE_REASONS, List.of());
+            meta.put(EvalMetaKeys.LOW_CONFIDENCE_GATE, EvalLowConfidence.Gates.NONE);
             meta.put("disabled_reason", "RETRIEVAL_DISABLED");
-            EvalBehaviorMetaSync.applyRootToMeta(meta, "deny", "POLICY_DISABLED");
+            EvalBehaviorMetaSync.applyRootToMeta(meta, "deny", EvalErrorCodes.POLICY_DISABLED);
             enforceRetrievalHitIdBoundary(meta, mode, httpRequest);
             long latencyMs = (System.nanoTime() - startNs) / 1_000_000L;
             return new EvalChatResponse(
@@ -223,7 +223,7 @@ public class EvalChatController {
                     meta,
                     sources,
                     List.of(),
-                    "POLICY_DISABLED");
+                    EvalErrorCodes.POLICY_DISABLED);
         }
 
         UUID evalUserId = EvalStableUserId.fromEvalTargetId(xEvalTargetId);
@@ -238,15 +238,15 @@ public class EvalChatController {
         sources = hitsToSources(candidates);
         List<EvalChatResponse.RetrievalHit> retrievalHits = hitsToRetrievalHits(candidates);
         int hitCount = candidateTotal;
-        meta.put("retrieve_hit_count", hitCount);
-        meta.put("canonical_hit_id_scheme", "kb_chunk_id");
-        meta.put("retrieval_candidate_limit_n", limitN);
-        meta.put("retrieval_candidate_total", candidateTotal);
+        meta.put(EvalMetaKeys.RETRIEVE_HIT_COUNT, hitCount);
+        meta.put(EvalMetaKeys.CANONICAL_HIT_ID_SCHEME, "kb_chunk_id");
+        meta.put(EvalMetaKeys.RETRIEVAL_CANDIDATE_LIMIT_N, limitN);
+        meta.put(EvalMetaKeys.RETRIEVAL_CANDIDATE_TOTAL, candidateTotal);
 
         // Day5：非 debug 也能验证引用闭环：对候选集前 N 生成 hashed membership（HMAC 列表）
         // key 派生材料来自 X-Eval-Token + (targetId,datasetId,caseId)，与 eval 侧对齐
         meta.put(
-                "retrieval_hit_id_hashes",
+                EvalMetaKeys.RETRIEVAL_HIT_ID_HASHES,
                 RetrievalMembershipHasher.buildEvalHitIdHashes(
                         xEvalToken,
                         xEvalTargetId,
@@ -278,9 +278,9 @@ public class EvalChatController {
             behavior = sc.behavior();
             errorCode = sc.errorCode();
             lowConfidence = sc.lowConfidence();
-            meta.put("low_confidence", sc.lowConfidence());
-            meta.put("low_confidence_reasons", sc.lowConfidenceReasons());
-            meta.put("low_confidence_gate", "post_retrieve_gate");
+            meta.put(EvalMetaKeys.LOW_CONFIDENCE, sc.lowConfidence());
+            meta.put(EvalMetaKeys.LOW_CONFIDENCE_REASONS, sc.lowConfidenceReasons());
+            meta.put(EvalMetaKeys.LOW_CONFIDENCE_GATE, EvalLowConfidence.Gates.POST_RETRIEVE_GATE);
         } else {
             var lcBehavior =
                     RagPostRetrieveGate.LowConfidenceBehavior.fromConfig(ragProperties.getLowConfidenceBehavior());
@@ -296,20 +296,20 @@ public class EvalChatController {
                                 lcRules);
                 if (!reasons.isEmpty()) {
                     lowConfidence = true;
-                    meta.put("low_confidence", true);
-                    meta.put("low_confidence_reasons", reasons);
-                    meta.put("low_confidence_gate", "post_retrieve_allow_llm");
+                    meta.put(EvalMetaKeys.LOW_CONFIDENCE, true);
+                    meta.put(EvalMetaKeys.LOW_CONFIDENCE_REASONS, reasons);
+                    meta.put(EvalMetaKeys.LOW_CONFIDENCE_GATE, EvalLowConfidence.Gates.POST_RETRIEVE_ALLOW_LLM);
                 } else {
                     lowConfidence = false;
-                    meta.put("low_confidence", false);
-                    meta.put("low_confidence_reasons", List.of());
-                    meta.put("low_confidence_gate", "none");
+                    meta.put(EvalMetaKeys.LOW_CONFIDENCE, false);
+                    meta.put(EvalMetaKeys.LOW_CONFIDENCE_REASONS, List.of());
+                    meta.put(EvalMetaKeys.LOW_CONFIDENCE_GATE, EvalLowConfidence.Gates.NONE);
                 }
             } else {
                 lowConfidence = false;
-                meta.put("low_confidence", false);
-                meta.put("low_confidence_reasons", List.of());
-                meta.put("low_confidence_gate", "none");
+                meta.put(EvalMetaKeys.LOW_CONFIDENCE, false);
+                meta.put(EvalMetaKeys.LOW_CONFIDENCE_REASONS, List.of());
+                meta.put(EvalMetaKeys.LOW_CONFIDENCE_GATE, EvalLowConfidence.Gates.NONE);
             }
         }
 
@@ -442,14 +442,14 @@ public class EvalChatController {
             String mode,
             HttpServletRequest httpRequest,
             long startNs) {
-        meta.put("retrieve_hit_count", 0);
-        meta.put("low_confidence", false);
-        meta.put("low_confidence_reasons", List.of());
-        meta.put("low_confidence_gate", "none");
-        meta.put("canonical_hit_id_scheme", "kb_chunk_id");
-        meta.put("retrieval_candidate_limit_n", 0);
-        meta.put("retrieval_candidate_total", 0);
-        meta.put("retrieval_hit_id_hashes", List.of());
+        meta.put(EvalMetaKeys.RETRIEVE_HIT_COUNT, 0);
+        meta.put(EvalMetaKeys.LOW_CONFIDENCE, false);
+        meta.put(EvalMetaKeys.LOW_CONFIDENCE_REASONS, List.of());
+        meta.put(EvalMetaKeys.LOW_CONFIDENCE_GATE, EvalLowConfidence.Gates.NONE);
+        meta.put(EvalMetaKeys.CANONICAL_HIT_ID_SCHEME, "kb_chunk_id");
+        meta.put(EvalMetaKeys.RETRIEVAL_CANDIDATE_LIMIT_N, 0);
+        meta.put(EvalMetaKeys.RETRIEVAL_CANDIDATE_TOTAL, 0);
+        meta.put(EvalMetaKeys.RETRIEVAL_HIT_ID_HASHES, List.of());
         meta.put("stub_tools_disabled", true);
         meta.put("tool_policy", "stub");
         String msg = "评测桩工具已在配置中关闭（vagent.eval.api.stub-tools-enabled=false）。";
@@ -480,14 +480,14 @@ public class EvalChatController {
             String mode,
             HttpServletRequest httpRequest,
             long startNs) {
-        meta.put("retrieve_hit_count", 0);
-        meta.put("low_confidence", false);
-        meta.put("low_confidence_reasons", List.of());
-        meta.put("low_confidence_gate", "none");
-        meta.put("canonical_hit_id_scheme", "kb_chunk_id");
-        meta.put("retrieval_candidate_limit_n", 0);
-        meta.put("retrieval_candidate_total", 0);
-        meta.put("retrieval_hit_id_hashes", List.of());
+        meta.put(EvalMetaKeys.RETRIEVE_HIT_COUNT, 0);
+        meta.put(EvalMetaKeys.LOW_CONFIDENCE, false);
+        meta.put(EvalMetaKeys.LOW_CONFIDENCE_REASONS, List.of());
+        meta.put(EvalMetaKeys.LOW_CONFIDENCE_GATE, EvalLowConfidence.Gates.NONE);
+        meta.put(EvalMetaKeys.CANONICAL_HIT_ID_SCHEME, "kb_chunk_id");
+        meta.put(EvalMetaKeys.RETRIEVAL_CANDIDATE_LIMIT_N, 0);
+        meta.put(EvalMetaKeys.RETRIEVAL_CANDIDATE_TOTAL, 0);
+        meta.put(EvalMetaKeys.RETRIEVAL_HIT_ID_HASHES, List.of());
         String pol = normalizedToolPolicy(request.getToolPolicy());
         meta.put("tool_policy", pol);
         meta.put("tool_eval_non_stub", true);
@@ -523,14 +523,14 @@ public class EvalChatController {
             String xEvalCaseId,
             long startNs,
             String q) {
-        meta.put("retrieve_hit_count", 0);
-        meta.put("low_confidence", false);
-        meta.put("low_confidence_reasons", List.of());
-        meta.put("low_confidence_gate", "none");
-        meta.put("canonical_hit_id_scheme", "kb_chunk_id");
-        meta.put("retrieval_candidate_limit_n", 0);
-        meta.put("retrieval_candidate_total", 0);
-        meta.put("retrieval_hit_id_hashes", List.of());
+        meta.put(EvalMetaKeys.RETRIEVE_HIT_COUNT, 0);
+        meta.put(EvalMetaKeys.LOW_CONFIDENCE, false);
+        meta.put(EvalMetaKeys.LOW_CONFIDENCE_REASONS, List.of());
+        meta.put(EvalMetaKeys.LOW_CONFIDENCE_GATE, EvalLowConfidence.Gates.NONE);
+        meta.put(EvalMetaKeys.CANONICAL_HIT_ID_SCHEME, "kb_chunk_id");
+        meta.put(EvalMetaKeys.RETRIEVAL_CANDIDATE_LIMIT_N, 0);
+        meta.put(EvalMetaKeys.RETRIEVAL_CANDIDATE_TOTAL, 0);
+        meta.put(EvalMetaKeys.RETRIEVAL_HIT_ID_HASHES, List.of());
         meta.put("eval_stub_tools", true);
         meta.put("tool_policy", "stub");
 
@@ -542,9 +542,9 @@ public class EvalChatController {
         String behavior = "tool";
         String errorCode = null;
         if ("timeout".equalsIgnoreCase(r.outcome())) {
-            errorCode = "TOOL_TIMEOUT";
+            errorCode = EvalErrorCodes.TOOL_TIMEOUT;
         } else if (!r.succeeded()) {
-            errorCode = "TOOL_ERROR";
+            errorCode = EvalErrorCodes.TOOL_ERROR;
         }
 
         EvalBehaviorMetaSync.applyRootToMeta(meta, behavior, errorCode);
@@ -583,14 +583,14 @@ public class EvalChatController {
             HttpServletRequest httpRequest,
             long startNs,
             String q) {
-        meta.put("retrieve_hit_count", 0);
-        meta.put("low_confidence", false);
-        meta.put("low_confidence_reasons", List.of());
-        meta.put("low_confidence_gate", "none");
-        meta.put("canonical_hit_id_scheme", "kb_chunk_id");
-        meta.put("retrieval_candidate_limit_n", 0);
-        meta.put("retrieval_candidate_total", 0);
-        meta.put("retrieval_hit_id_hashes", List.of());
+        meta.put(EvalMetaKeys.RETRIEVE_HIT_COUNT, 0);
+        meta.put(EvalMetaKeys.LOW_CONFIDENCE, false);
+        meta.put(EvalMetaKeys.LOW_CONFIDENCE_REASONS, List.of());
+        meta.put(EvalMetaKeys.LOW_CONFIDENCE_GATE, EvalLowConfidence.Gates.NONE);
+        meta.put(EvalMetaKeys.CANONICAL_HIT_ID_SCHEME, "kb_chunk_id");
+        meta.put(EvalMetaKeys.RETRIEVAL_CANDIDATE_LIMIT_N, 0);
+        meta.put(EvalMetaKeys.RETRIEVAL_CANDIDATE_TOTAL, 0);
+        meta.put(EvalMetaKeys.RETRIEVAL_HIT_ID_HASHES, List.of());
         meta.put("eval_real_tools", true);
         meta.put("tool_policy", "real");
 
@@ -674,9 +674,9 @@ public class EvalChatController {
         String behavior = "tool";
         String errorCode = null;
         if ("timeout".equalsIgnoreCase(outcome)) {
-            errorCode = "TOOL_TIMEOUT";
+            errorCode = EvalErrorCodes.TOOL_TIMEOUT;
         } else if (!succeeded) {
-            errorCode = "TOOL_ERROR";
+            errorCode = EvalErrorCodes.TOOL_ERROR;
         }
         String answer = succeeded ? formatMcpToolResult(result) : "MCP 工具调用失败。";
 
@@ -793,20 +793,20 @@ public class EvalChatController {
     }
 
     private static void applySafetyShortCircuitMeta(Map<String, Object> meta, EvalChatSafetyGate.Outcome outcome) {
-        meta.put("retrieve_hit_count", 0);
-        meta.put("canonical_hit_id_scheme", "kb_chunk_id");
-        meta.put("retrieval_candidate_limit_n", 0);
-        meta.put("retrieval_candidate_total", 0);
-        meta.put("retrieval_hit_id_hashes", List.of());
-        meta.put("eval_safety_rule_id", outcome.ruleId());
+        meta.put(EvalMetaKeys.RETRIEVE_HIT_COUNT, 0);
+        meta.put(EvalMetaKeys.CANONICAL_HIT_ID_SCHEME, "kb_chunk_id");
+        meta.put(EvalMetaKeys.RETRIEVAL_CANDIDATE_LIMIT_N, 0);
+        meta.put(EvalMetaKeys.RETRIEVAL_CANDIDATE_TOTAL, 0);
+        meta.put(EvalMetaKeys.RETRIEVAL_HIT_ID_HASHES, List.of());
+        meta.put(EvalMetaKeys.EVAL_SAFETY_RULE_ID, outcome.ruleId());
         if ("deny".equals(outcome.behavior())) {
-            meta.put("low_confidence", false);
-            meta.put("low_confidence_reasons", List.of());
-            meta.put("low_confidence_gate", "pre_retrieval_safety");
+            meta.put(EvalMetaKeys.LOW_CONFIDENCE, false);
+            meta.put(EvalMetaKeys.LOW_CONFIDENCE_REASONS, List.of());
+            meta.put(EvalMetaKeys.LOW_CONFIDENCE_GATE, EvalLowConfidence.Gates.PRE_RETRIEVAL_SAFETY);
         } else {
-            meta.put("low_confidence", true);
-            meta.put("low_confidence_reasons", List.of("SAFETY_QUERY_GATE"));
-            meta.put("low_confidence_gate", "pre_retrieval_safety");
+            meta.put(EvalMetaKeys.LOW_CONFIDENCE, true);
+            meta.put(EvalMetaKeys.LOW_CONFIDENCE_REASONS, List.of(EvalLowConfidence.Reasons.SAFETY_QUERY_GATE));
+            meta.put(EvalMetaKeys.LOW_CONFIDENCE_GATE, EvalLowConfidence.Gates.PRE_RETRIEVAL_SAFETY);
         }
     }
 

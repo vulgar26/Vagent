@@ -66,39 +66,39 @@ public final class EvalChatSafetyGate {
 
     private static Optional<Outcome> matchDeny(String raw, String norm, Boolean requiresCitations) {
         if (P_TOKEN_EXFIL.matcher(norm).find()) {
-            return Optional.of(Outcome.deny("POLICY_DENY", "DATA_EXFIL_TOKEN_QUERY", denyMessage()));
+            return Optional.of(Outcome.deny(EvalErrorCodes.POLICY_DENY, "DATA_EXFIL_TOKEN_QUERY", denyMessage()));
         }
         if (P_PROMPT_LEAK.matcher(norm).find()) {
-            return Optional.of(Outcome.deny("POLICY_DENY", "PROMPT_LEAK_QUERY", denyMessage()));
+            return Optional.of(Outcome.deny(EvalErrorCodes.POLICY_DENY, "PROMPT_LEAK_QUERY", denyMessage()));
         }
         if (P_PROMPT_INJECTION.matcher(norm).find()) {
-            return Optional.of(Outcome.deny("POLICY_DENY", "PROMPT_INJECTION_QUERY", denyMessage()));
+            return Optional.of(Outcome.deny(EvalErrorCodes.POLICY_DENY, "PROMPT_INJECTION_QUERY", denyMessage()));
         }
         if (P_DEBUG_EXFIL.matcher(norm).find()) {
-            return Optional.of(Outcome.deny("POLICY_DENY", "PROMPT_INJECTION_DEBUG_QUERY", denyMessage()));
+            return Optional.of(Outcome.deny(EvalErrorCodes.POLICY_DENY, "PROMPT_INJECTION_DEBUG_QUERY", denyMessage()));
         }
         if (P_SOURCE_POISONING.matcher(norm).find()) {
-            return Optional.of(Outcome.deny("POLICY_DENY", "SOURCE_POISONING_INSTRUCTION_QUERY", denyMessage()));
+            return Optional.of(Outcome.deny(EvalErrorCodes.POLICY_DENY, "SOURCE_POISONING_INSTRUCTION_QUERY", denyMessage()));
         }
         if (P_TOOL_OUTPUT_INJECTION.matcher(norm).find()) {
-            return Optional.of(Outcome.deny("POLICY_DENY", "TOOL_OUTPUT_INJECTION_QUERY", denyMessage()));
+            return Optional.of(Outcome.deny(EvalErrorCodes.POLICY_DENY, "TOOL_OUTPUT_INJECTION_QUERY", denyMessage()));
         }
         if (P_TOOL_OUTPUT_INJECTION_JSON.matcher(norm).find()) {
-            return Optional.of(Outcome.deny("POLICY_DENY", "TOOL_OUTPUT_INJECTION_JSON_QUERY", denyMessage()));
+            return Optional.of(Outcome.deny(EvalErrorCodes.POLICY_DENY, "TOOL_OUTPUT_INJECTION_JSON_QUERY", denyMessage()));
         }
         if (P_CITATION_MISMATCH_ATTACK.matcher(norm).find()) {
-            return Optional.of(Outcome.deny("POLICY_DENY", "CITATION_MISMATCH_ATTACK_QUERY", denyMessage()));
+            return Optional.of(Outcome.deny(EvalErrorCodes.POLICY_DENY, "CITATION_MISMATCH_ATTACK_QUERY", denyMessage()));
         }
         // p0_v0_answer_005：题干本身即 citation_forgery 策略题；部分评测请求未在 body 带 requires_citations=true 时仍须 deny
         if (P_CITATION_FORGERY_META_QUESTION.matcher(norm).find()) {
-            return Optional.of(Outcome.deny("POLICY_DENY", "CITATION_FORGERY_QUERY", denyMessage()));
+            return Optional.of(Outcome.deny(EvalErrorCodes.POLICY_DENY, "CITATION_FORGERY_QUERY", denyMessage()));
         }
         if (Boolean.TRUE.equals(requiresCitations)
                 && P_CITATION_FORGERY.matcher(norm).find()) {
-            return Optional.of(Outcome.deny("POLICY_DENY", "CITATION_FORGERY_QUERY", denyMessage()));
+            return Optional.of(Outcome.deny(EvalErrorCodes.POLICY_DENY, "CITATION_FORGERY_QUERY", denyMessage()));
         }
         if (P_SENSITIVE_EXFIL.matcher(norm).find()) {
-            return Optional.of(Outcome.deny("POLICY_DENY", "SENSITIVE_EXFIL_QUERY", denyMessage()));
+            return Optional.of(Outcome.deny(EvalErrorCodes.POLICY_DENY, "SENSITIVE_EXFIL_QUERY", denyMessage()));
         }
         return Optional.empty();
     }
@@ -207,7 +207,7 @@ public final class EvalChatSafetyGate {
         }
 
         static Outcome clarify(String ruleId, String answer) {
-            return new Outcome("clarify", answer, "GUARDRAIL_TRIGGERED", ruleId);
+            return new Outcome("clarify", answer, EvalErrorCodes.GUARDRAIL_TRIGGERED, ruleId);
         }
 
         public String behavior() {

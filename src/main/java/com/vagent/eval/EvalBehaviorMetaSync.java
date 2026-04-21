@@ -16,14 +16,14 @@ public final class EvalBehaviorMetaSync {
      */
     public static void applyRootToMeta(Map<String, Object> meta, String behavior, String errorCode) {
         if (behavior != null && !behavior.isBlank()) {
-            meta.put("behavior", behavior);
+            meta.put(EvalMetaKeys.BEHAVIOR, behavior);
         } else {
-            meta.remove("behavior");
+            meta.remove(EvalMetaKeys.BEHAVIOR);
         }
         if (errorCode != null && !errorCode.isBlank()) {
-            meta.put("error_code", errorCode);
+            meta.put(EvalMetaKeys.ERROR_CODE, errorCode);
         } else {
-            meta.remove("error_code");
+            meta.remove(EvalMetaKeys.ERROR_CODE);
         }
     }
 }
