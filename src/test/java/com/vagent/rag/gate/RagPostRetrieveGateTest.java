@@ -22,7 +22,9 @@ class RagPostRetrieveGateTest {
                         List.of(),
                         RagPostRetrieveGate.ZeroHitsPolicy.EVAL_ALIGNED,
                         EmptyHitsBehavior.ALLOW_LLM,
-                        null);
+                        null,
+                        RagPostRetrieveGate.LowConfidenceBehavior.CLARIFY,
+                        RagPostRetrieveGate.parseLowConfidenceRuleSet(null));
         assertThat(r).isPresent();
         assertThat(r.get().errorCode()).isEqualTo("RETRIEVE_EMPTY");
     }
@@ -38,7 +40,9 @@ class RagPostRetrieveGateTest {
                         List.of(),
                         RagPostRetrieveGate.ZeroHitsPolicy.RESPECT_RAG_PROPERTIES,
                         EmptyHitsBehavior.ALLOW_LLM,
-                        "custom");
+                        "custom",
+                        RagPostRetrieveGate.LowConfidenceBehavior.CLARIFY,
+                        RagPostRetrieveGate.parseLowConfidenceRuleSet(null));
         assertThat(r).isEmpty();
     }
 
@@ -53,7 +57,9 @@ class RagPostRetrieveGateTest {
                         List.of(),
                         RagPostRetrieveGate.ZeroHitsPolicy.RESPECT_RAG_PROPERTIES,
                         EmptyHitsBehavior.NO_LLM,
-                        "configured-empty-msg");
+                        "configured-empty-msg",
+                        RagPostRetrieveGate.LowConfidenceBehavior.CLARIFY,
+                        RagPostRetrieveGate.parseLowConfidenceRuleSet(null));
         assertThat(r).isPresent();
         assertThat(r.get().answer()).isEqualTo("configured-empty-msg");
     }
@@ -74,7 +80,9 @@ class RagPostRetrieveGateTest {
                         List.of(),
                         RagPostRetrieveGate.ZeroHitsPolicy.EVAL_ALIGNED,
                         EmptyHitsBehavior.ALLOW_LLM,
-                        null);
+                        null,
+                        RagPostRetrieveGate.LowConfidenceBehavior.CLARIFY,
+                        RagPostRetrieveGate.parseLowConfidenceRuleSet(null));
         assertThat(r).isPresent();
         assertThat(r.get().lowConfidenceReasons()).containsExactly("QUERY_TOO_SHORT");
     }
@@ -94,7 +102,9 @@ class RagPostRetrieveGateTest {
                         List.of(),
                         RagPostRetrieveGate.ZeroHitsPolicy.EVAL_ALIGNED,
                         EmptyHitsBehavior.ALLOW_LLM,
-                        null);
+                        null,
+                        RagPostRetrieveGate.LowConfidenceBehavior.CLARIFY,
+                        RagPostRetrieveGate.parseLowConfidenceRuleSet(null));
         assertThat(r).isEmpty();
     }
 
@@ -113,7 +123,9 @@ class RagPostRetrieveGateTest {
                         List.of(),
                         RagPostRetrieveGate.ZeroHitsPolicy.EVAL_ALIGNED,
                         EmptyHitsBehavior.ALLOW_LLM,
-                        null);
+                        null,
+                        RagPostRetrieveGate.LowConfidenceBehavior.CLARIFY,
+                        RagPostRetrieveGate.parseLowConfidenceRuleSet(null));
         assertThat(r).isPresent();
         assertThat(r.get().errorCode()).isEqualTo("RETRIEVE_LOW_CONFIDENCE");
         assertThat(r.get().lowConfidenceReasons()).containsExactly("WEAK_TOP_HIT_DISTANCE");
@@ -134,7 +146,9 @@ class RagPostRetrieveGateTest {
                         List.of(),
                         RagPostRetrieveGate.ZeroHitsPolicy.EVAL_ALIGNED,
                         EmptyHitsBehavior.ALLOW_LLM,
-                        null);
+                        null,
+                        RagPostRetrieveGate.LowConfidenceBehavior.CLARIFY,
+                        RagPostRetrieveGate.parseLowConfidenceRuleSet(null));
         assertThat(r).isEmpty();
     }
 
@@ -153,7 +167,9 @@ class RagPostRetrieveGateTest {
                         List.of("这个"),
                         RagPostRetrieveGate.ZeroHitsPolicy.EVAL_ALIGNED,
                         EmptyHitsBehavior.ALLOW_LLM,
-                        null);
+                        null,
+                        RagPostRetrieveGate.LowConfidenceBehavior.CLARIFY,
+                        RagPostRetrieveGate.parseLowConfidenceRuleSet(null));
         assertThat(r).isPresent();
         assertThat(r.get().lowConfidenceReasons()).containsExactly("VAGUE_QUERY_REFERENCE");
     }
@@ -173,7 +189,9 @@ class RagPostRetrieveGateTest {
                         List.of("这个"),
                         RagPostRetrieveGate.ZeroHitsPolicy.EVAL_ALIGNED,
                         EmptyHitsBehavior.ALLOW_LLM,
-                        null);
+                        null,
+                        RagPostRetrieveGate.LowConfidenceBehavior.CLARIFY,
+                        RagPostRetrieveGate.parseLowConfidenceRuleSet(null));
         assertThat(r).isPresent();
         assertThat(r.get().lowConfidenceReasons())
                 .containsExactly("WEAK_TOP_HIT_DISTANCE", "VAGUE_QUERY_REFERENCE");

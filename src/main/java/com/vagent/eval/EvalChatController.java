@@ -269,7 +269,9 @@ public class EvalChatController {
                         ragPostRetrieveGateSettings.lowConfidenceQuerySubstrings(),
                         RagPostRetrieveGate.ZeroHitsPolicy.EVAL_ALIGNED,
                         EmptyHitsBehavior.ALLOW_LLM,
-                        null);
+                        null,
+                        RagPostRetrieveGate.LowConfidenceBehavior.fromConfig(ragProperties.getLowConfidenceBehavior()),
+                        RagPostRetrieveGate.parseLowConfidenceRuleSet(ragProperties.getLowConfidenceRuleSet()));
         if (gate.isPresent()) {
             RagPostRetrieveGate.ShortCircuit sc = gate.get();
             answer = sc.answer();
@@ -280,10 +282,35 @@ public class EvalChatController {
             meta.put("low_confidence_reasons", sc.lowConfidenceReasons());
             meta.put("low_confidence_gate", "post_retrieve_gate");
         } else {
-            lowConfidence = false;
-            meta.put("low_confidence", false);
-            meta.put("low_confidence_reasons", List.of());
-            meta.put("low_confidence_gate", "none");
+            var lcBehavior =
+                    RagPostRetrieveGate.LowConfidenceBehavior.fromConfig(ragProperties.getLowConfidenceBehavior());
+            var lcRules = RagPostRetrieveGate.parseLowConfidenceRuleSet(ragProperties.getLowConfidenceRuleSet());
+            if (lcBehavior == RagPostRetrieveGate.LowConfidenceBehavior.ALLOW_LLM) {
+                List<String> reasons =
+                        RagPostRetrieveGate.computeLowConfidenceReasons(
+                                q,
+                                hits,
+                                RagPostRetrieveGate.DEFAULT_MIN_QUERY_CHARS,
+                                ragPostRetrieveGateSettings.lowConfidenceCosineDistanceThreshold(),
+                                ragPostRetrieveGateSettings.lowConfidenceQuerySubstrings(),
+                                lcRules);
+                if (!reasons.isEmpty()) {
+                    lowConfidence = true;
+                    meta.put("low_confidence", true);
+                    meta.put("low_confidence_reasons", reasons);
+                    meta.put("low_confidence_gate", "post_retrieve_allow_llm");
+                } else {
+                    lowConfidence = false;
+                    meta.put("low_confidence", false);
+                    meta.put("low_confidence_reasons", List.of());
+                    meta.put("low_confidence_gate", "none");
+                }
+            } else {
+                lowConfidence = false;
+                meta.put("low_confidence", false);
+                meta.put("low_confidence_reasons", List.of());
+                meta.put("low_confidence_gate", "none");
+            }
         }
 
         if (evalApiProperties.isFullAnswerEnabled()

@@ -65,6 +65,18 @@ public class RagProperties {
     private Rerank rerank = new Rerank();
 
     /**
+     * P1-0：检索后低置信门控的默认行为（文档 SSOT：{@code plans/vagent-upgrade.md}）。
+     * <p>取值：{@code deny|clarify|allow-llm}（大小写不敏感）；缺省为 {@code clarify} 保持历史行为。</p>
+     */
+    private String lowConfidenceBehavior = "clarify";
+
+    /**
+     * P1-0：检索后低置信规则集合（逗号分隔；缺省全开）。
+     * <p>可选项（大小写不敏感）：{@code query_too_short, weak_top_hit_distance, vague_query_reference}。</p>
+     */
+    private String lowConfidenceRuleSet = "query_too_short,weak_top_hit_distance,vague_query_reference";
+
+    /**
      * 可选 UTF-8 密钥：用户侧 RAG SSE 首帧 {@code meta.retrieval_hit_id_hashes} 的 k_case 材料（与评测 {@code X-Eval-Token} 派生<strong>不同源</strong>）。
      * 留空时仍写入 {@code canonical_hit_id_scheme}、{@code retrieval_candidate_*} 与空列表 {@code []}。
      */
@@ -132,6 +144,25 @@ public class RagProperties {
 
     public void setRerank(Rerank rerank) {
         this.rerank = rerank != null ? rerank : new Rerank();
+    }
+
+    public String getLowConfidenceBehavior() {
+        return lowConfidenceBehavior;
+    }
+
+    public void setLowConfidenceBehavior(String lowConfidenceBehavior) {
+        this.lowConfidenceBehavior = lowConfidenceBehavior != null ? lowConfidenceBehavior : "clarify";
+    }
+
+    public String getLowConfidenceRuleSet() {
+        return lowConfidenceRuleSet;
+    }
+
+    public void setLowConfidenceRuleSet(String lowConfidenceRuleSet) {
+        this.lowConfidenceRuleSet =
+                lowConfidenceRuleSet != null
+                        ? lowConfidenceRuleSet
+                        : "query_too_short,weak_top_hit_distance,vague_query_reference";
     }
 
     public String getSseMembershipHmacSecret() {

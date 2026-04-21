@@ -7,6 +7,9 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
+import java.util.Locale;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * 检索之后、调用主 LLM 之前的统一门控结论，供 {@code POST /api/v1/eval/chat} 与 {@link com.vagent.chat.RagStreamChatService} 共用，
@@ -37,6 +40,57 @@ public final class RagPostRetrieveGate {
 
     private RagPostRetrieveGate() {}
 
+    public enum LowConfidenceBehavior {
+        DENY,
+        CLARIFY,
+        ALLOW_LLM;
+
+        public static LowConfidenceBehavior fromConfig(String raw) {
+            if (raw == null || raw.isBlank()) {
+                return CLARIFY;
+            }
+            String v = raw.trim().toLowerCase(Locale.ROOT);
+            return switch (v) {
+                case "deny" -> DENY;
+                case "allow-llm", "allow_llm", "allowllm" -> ALLOW_LLM;
+                default -> CLARIFY;
+            };
+        }
+    }
+
+    public enum LowConfidenceRule {
+        QUERY_TOO_SHORT,
+        WEAK_TOP_HIT_DISTANCE,
+        VAGUE_QUERY_REFERENCE;
+
+        public static LowConfidenceRule fromToken(String token) {
+            if (token == null || token.isBlank()) {
+                return null;
+            }
+            String v = token.trim().toLowerCase(Locale.ROOT);
+            return switch (v) {
+                case "query_too_short" -> QUERY_TOO_SHORT;
+                case "weak_top_hit_distance", "weak_distance", "distance" -> WEAK_TOP_HIT_DISTANCE;
+                case "vague_query_reference", "vague_substring", "vague" -> VAGUE_QUERY_REFERENCE;
+                default -> null;
+            };
+        }
+    }
+
+    public static Set<LowConfidenceRule> parseLowConfidenceRuleSet(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return Set.of(LowConfidenceRule.QUERY_TOO_SHORT, LowConfidenceRule.WEAK_TOP_HIT_DISTANCE, LowConfidenceRule.VAGUE_QUERY_REFERENCE);
+        }
+        Set<LowConfidenceRule> out =
+                java.util.Arrays.stream(raw.split(","))
+                        .map(LowConfidenceRule::fromToken)
+                        .filter(r -> r != null)
+                        .collect(Collectors.toUnmodifiableSet());
+        return out.isEmpty()
+                ? Set.of(LowConfidenceRule.QUERY_TOO_SHORT, LowConfidenceRule.WEAK_TOP_HIT_DISTANCE, LowConfidenceRule.VAGUE_QUERY_REFERENCE)
+                : out;
+    }
+
     /**
      * @param query 用于「过短」与「模糊子串」判定（trim 后比长度、{@code contains} 子串）；须与调用方约定是否与检索 query 同形（见类 Javadoc）。
      * @param zeroHitsPolicy {@link ZeroHitsPolicy#EVAL_ALIGNED}：0 命中一律走澄清+{@code RETRIEVE_EMPTY}（评测默认）；
@@ -50,7 +104,9 @@ public final class RagPostRetrieveGate {
             List<String> lowConfidenceQuerySubstrings,
             ZeroHitsPolicy zeroHitsPolicy,
             EmptyHitsBehavior emptyHitsBehavior,
-            String configuredEmptyNoLlmMessage) {
+            String configuredEmptyNoLlmMessage,
+            LowConfidenceBehavior lowConfidenceBehavior,
+            Set<LowConfidenceRule> lowConfidenceRuleSet) {
         int hitCount = hits == null ? 0 : hits.size();
         String q = query == null ? "" : query.trim();
 
@@ -75,36 +131,62 @@ public final class RagPostRetrieveGate {
             return Optional.empty();
         }
 
-        if (q.length() < minQueryChars) {
-            return Optional.of(
-                    new ShortCircuit(
-                            MSG_QUERY_TOO_SHORT,
-                            "clarify",
-                            "RETRIEVE_LOW_CONFIDENCE",
-                            true,
-                            List.of("QUERY_TOO_SHORT")));
-        }
-
-        boolean distLow = isDistanceLowConfidence(hits, lowConfidenceCosineDistanceThreshold);
-        boolean vagueLow = isVagueSubstringLowConfidence(q, lowConfidenceQuerySubstrings);
-        if (distLow || vagueLow) {
-            ArrayList<String> reasons = new ArrayList<>(2);
-            if (distLow) {
-                reasons.add("WEAK_TOP_HIT_DISTANCE");
+        List<String> reasons =
+                computeLowConfidenceReasons(
+                        q,
+                        hits,
+                        minQueryChars,
+                        lowConfidenceCosineDistanceThreshold,
+                        lowConfidenceQuerySubstrings,
+                        lowConfidenceRuleSet);
+        if (!reasons.isEmpty()) {
+            if (lowConfidenceBehavior == null) {
+                lowConfidenceBehavior = LowConfidenceBehavior.CLARIFY;
             }
-            if (vagueLow) {
-                reasons.add("VAGUE_QUERY_REFERENCE");
+            if (lowConfidenceBehavior == LowConfidenceBehavior.ALLOW_LLM) {
+                return Optional.empty();
             }
-            return Optional.of(
-                    new ShortCircuit(
-                            MSG_LOW_CONFIDENCE,
-                            "clarify",
-                            "RETRIEVE_LOW_CONFIDENCE",
-                            true,
-                            List.copyOf(reasons)));
+            String behavior = lowConfidenceBehavior == LowConfidenceBehavior.DENY ? "deny" : "clarify";
+            String msg = reasons.contains("QUERY_TOO_SHORT") ? MSG_QUERY_TOO_SHORT : MSG_LOW_CONFIDENCE;
+            return Optional.of(new ShortCircuit(msg, behavior, "RETRIEVE_LOW_CONFIDENCE", true, List.copyOf(reasons)));
         }
 
         return Optional.empty();
+    }
+
+    /**
+     * 仅对「hitCount&gt;0」的场景计算低置信原因；调用方可用于 {@code allow-llm} 路径打标而不短路。
+     */
+    public static List<String> computeLowConfidenceReasons(
+            String query,
+            List<RetrieveHit> hits,
+            int minQueryChars,
+            Double lowConfidenceCosineDistanceThreshold,
+            List<String> lowConfidenceQuerySubstrings,
+            Set<LowConfidenceRule> lowConfidenceRuleSet) {
+        String q = query == null ? "" : query.trim();
+        Set<LowConfidenceRule> rules =
+                lowConfidenceRuleSet == null || lowConfidenceRuleSet.isEmpty()
+                        ? Set.of(LowConfidenceRule.QUERY_TOO_SHORT, LowConfidenceRule.WEAK_TOP_HIT_DISTANCE, LowConfidenceRule.VAGUE_QUERY_REFERENCE)
+                        : lowConfidenceRuleSet;
+        ArrayList<String> reasons = new ArrayList<>(2);
+        if (rules.contains(LowConfidenceRule.QUERY_TOO_SHORT) && q.length() < minQueryChars) {
+            reasons.add("QUERY_TOO_SHORT");
+            return List.copyOf(reasons);
+        }
+        boolean distLow =
+                rules.contains(LowConfidenceRule.WEAK_TOP_HIT_DISTANCE)
+                        && isDistanceLowConfidence(hits, lowConfidenceCosineDistanceThreshold);
+        boolean vagueLow =
+                rules.contains(LowConfidenceRule.VAGUE_QUERY_REFERENCE)
+                        && isVagueSubstringLowConfidence(q, lowConfidenceQuerySubstrings);
+        if (distLow) {
+            reasons.add("WEAK_TOP_HIT_DISTANCE");
+        }
+        if (vagueLow) {
+            reasons.add("VAGUE_QUERY_REFERENCE");
+        }
+        return reasons.isEmpty() ? List.of() : List.copyOf(reasons);
     }
 
     /** 0 命中且允许走 LLM 时，写入 SSE/eval 风格 meta 的前缀字段。 */

@@ -113,7 +113,7 @@
 #### 未在代码中实现（文档仍为建议项）
 
 - **P1-1 CRAG**、**P1-2 上下文压缩**、**P1-3 记忆摘要策略**（超出当前 `messages` 对话模型的持久化增强）。
-- **`vagent.rag.low-confidence-behavior` / `low-confidence-rule-set`** 等（本文「低置信阈值」小节曾列的**新增配置键**）：**未**发现 Java `@ConfigurationProperties` 绑定。
+- ~~**`vagent.rag.low-confidence-behavior` / `low-confidence-rule-set`**~~：已落地为 `RagProperties` 配置并接入 `RagPostRetrieveGate`（默认 `clarify` 保持历史行为；`allow-llm` 时会继续生成但在 `meta.low_confidence=true` 下打标，供分桶/报表单列）。
 
 ---
 

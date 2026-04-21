@@ -244,7 +244,9 @@ public class RagStreamChatService {
                             ragPostRetrieveGateSettings.lowConfidenceQuerySubstrings(),
                             RagPostRetrieveGate.ZeroHitsPolicy.RESPECT_RAG_PROPERTIES,
                             ragProperties.getEmptyHitsBehavior(),
-                            ragProperties.getEmptyHitsNoLlmMessage());
+                            ragProperties.getEmptyHitsNoLlmMessage(),
+                            RagPostRetrieveGate.LowConfidenceBehavior.fromConfig(ragProperties.getLowConfidenceBehavior()),
+                            RagPostRetrieveGate.parseLowConfidenceRuleSet(ragProperties.getLowConfidenceRuleSet()));
             if (gate.isPresent()) {
                 final RagPostRetrieveGate.ShortCircuit gateSc = gate.get();
                 final RagRetrieveResult traceForGate = retrieveTrace;
@@ -318,9 +320,32 @@ public class RagStreamChatService {
             if (hitCount == 0 && ragProperties.getEmptyHitsBehavior() == EmptyHitsBehavior.ALLOW_LLM) {
                 RagPostRetrieveGate.applyZeroHitsAllowLlmMeta(metaExtra);
             } else if (hitCount > 0 && retrieveTrace != null) {
-                metaExtra.put("low_confidence", false);
-                metaExtra.put("low_confidence_reasons", List.of());
-                metaExtra.put("low_confidence_gate", "none");
+                var lcBehavior =
+                        RagPostRetrieveGate.LowConfidenceBehavior.fromConfig(ragProperties.getLowConfidenceBehavior());
+                if (lcBehavior == RagPostRetrieveGate.LowConfidenceBehavior.ALLOW_LLM && ragHitsForGuard != null) {
+                    List<String> reasons =
+                            RagPostRetrieveGate.computeLowConfidenceReasons(
+                                    // SSE 的门控 query 口径：用户原句（与检索 query 可不一致）
+                                    prepared != null ? prepared.messages().get(prepared.messages().size() - 1).content() : "",
+                                    ragHitsForGuard,
+                                    RagPostRetrieveGate.DEFAULT_MIN_QUERY_CHARS,
+                                    ragPostRetrieveGateSettings.lowConfidenceCosineDistanceThreshold(),
+                                    ragPostRetrieveGateSettings.lowConfidenceQuerySubstrings(),
+                                    RagPostRetrieveGate.parseLowConfidenceRuleSet(ragProperties.getLowConfidenceRuleSet()));
+                    if (!reasons.isEmpty()) {
+                        metaExtra.put("low_confidence", true);
+                        metaExtra.put("low_confidence_reasons", reasons);
+                        metaExtra.put("low_confidence_gate", "post_retrieve_allow_llm");
+                    } else {
+                        metaExtra.put("low_confidence", false);
+                        metaExtra.put("low_confidence_reasons", List.of());
+                        metaExtra.put("low_confidence_gate", "none");
+                    }
+                } else {
+                    metaExtra.put("low_confidence", false);
+                    metaExtra.put("low_confidence_reasons", List.of());
+                    metaExtra.put("low_confidence_gate", "none");
+                }
             }
             boolean sseBufferedQuoteOnly =
                     guardrailsProperties != null
