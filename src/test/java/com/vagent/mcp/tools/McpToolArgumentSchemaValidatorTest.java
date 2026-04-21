@@ -14,7 +14,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class McpToolArgumentSchemaValidatorTest {
 
     private final McpToolArgumentSchemaValidator validator =
-            new McpToolArgumentSchemaValidator(new ObjectMapper());
+            new McpToolArgumentSchemaValidator(new ObjectMapper(), new ToolRegistry());
 
     @Test
     void echoEmptyMessageFailsSchema() {

@@ -12,7 +12,6 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -28,20 +27,21 @@ public final class McpToolArgumentSchemaValidator {
     private static final String SCHEMA_ROOT = "/mcp/tool-arg-schemas/";
 
     private final ObjectMapper objectMapper;
+    private final ToolRegistry toolRegistry;
     private final ConcurrentHashMap<String, JsonSchema> schemaCache = new ConcurrentHashMap<>();
 
-    public McpToolArgumentSchemaValidator(ObjectMapper objectMapper) {
+    public McpToolArgumentSchemaValidator(ObjectMapper objectMapper, ToolRegistry toolRegistry) {
         this.objectMapper = objectMapper;
+        this.toolRegistry = toolRegistry;
     }
 
     /**
      * @return 空表示通过或未配置 schema；否则为校验错误信息列表（顺序稳定）
      */
     public Optional<List<String>> validate(String toolName, Map<String, Object> arguments) {
-        String key = schemaKey(toolName);
-        if (key == null) {
-            return Optional.empty();
-        }
+        Optional<String> keyOpt = toolRegistry != null ? toolRegistry.argSchemaKey(toolName) : Optional.empty();
+        if (keyOpt.isEmpty()) return Optional.empty();
+        String key = keyOpt.get();
         JsonSchema schema = schemaCache.computeIfAbsent(key, this::loadSchema);
         JsonNode instance = objectMapper.valueToTree(arguments != null ? arguments : Map.of());
         Set<ValidationMessage> errors = schema.validate(instance);
@@ -54,17 +54,6 @@ public final class McpToolArgumentSchemaValidator {
         }
         messages.sort(String::compareTo);
         return Optional.of(List.copyOf(messages));
-    }
-
-    private static String schemaKey(String toolName) {
-        if (toolName == null) {
-            return null;
-        }
-        String n = toolName.trim().toLowerCase(Locale.ROOT);
-        if ("echo".equals(n) || "ping".equals(n)) {
-            return n;
-        }
-        return null;
     }
 
     private JsonSchema loadSchema(String toolKey) {
