@@ -638,9 +638,9 @@ public class EvalChatController {
         Optional<List<String>> schemaViolations = mcpToolArgumentSchemaValidator.validate(toolName, args);
         if (schemaViolations.isPresent()) {
             List<String> viol = schemaViolations.get();
-            meta.put("tool_error_code", "TOOL_SCHEMA_INVALID");
-            meta.put("tool_schema_violations", viol);
-            EvalBehaviorMetaSync.applyRootToMeta(meta, "tool", "TOOL_SCHEMA_INVALID");
+            meta.put(EvalMetaKeys.TOOL_ERROR_CODE, EvalErrorCodes.TOOL_SCHEMA_INVALID);
+            meta.put(EvalMetaKeys.TOOL_SCHEMA_VIOLATIONS, viol);
+            EvalBehaviorMetaSync.applyRootToMeta(meta, "tool", EvalErrorCodes.TOOL_SCHEMA_INVALID);
             enforceRetrievalHitIdBoundary(meta, mode, httpRequest);
             long latencyMs = (System.nanoTime() - startNs) / 1_000_000L;
             EvalChatResponse.Tool toolBlock =
@@ -653,7 +653,7 @@ public class EvalChatController {
                     meta,
                     List.of(),
                     List.of(),
-                    "TOOL_SCHEMA_INVALID",
+                    EvalErrorCodes.TOOL_SCHEMA_INVALID,
                     toolBlock,
                     null);
         }

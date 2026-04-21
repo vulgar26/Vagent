@@ -717,10 +717,12 @@ public class RagStreamChatService {
             meta.put("toolError", toolError);
         }
         if (toolErrorCode != null && !toolErrorCode.isBlank()) {
-            meta.put("tool_error_code", toolErrorCode);
+            meta.put(com.vagent.eval.EvalMetaKeys.TOOL_ERROR_CODE, toolErrorCode);
         }
         if (toolSchemaViolations != null && !toolSchemaViolations.isEmpty()) {
-            meta.put("tool_schema_violations", List.copyOf(toolSchemaViolations));
+            meta.put(
+                    com.vagent.eval.EvalMetaKeys.TOOL_SCHEMA_VIOLATIONS,
+                    List.copyOf(toolSchemaViolations));
         }
         if (additionalMeta != null && !additionalMeta.isEmpty()) {
             for (Map.Entry<String, Object> e : additionalMeta.entrySet()) {
@@ -836,12 +838,17 @@ public class RagStreamChatService {
         static ToolContextOutcome schemaInvalid(List<String> violations) {
             String summary =
                     violations.isEmpty()
-                            ? "TOOL_SCHEMA_INVALID"
+                            ? com.vagent.eval.EvalErrorCodes.TOOL_SCHEMA_INVALID
                             : String.join(
                                     "; ",
                                     violations.subList(0, Math.min(3, violations.size())));
             return new ToolContextOutcome(
-                    false, null, "error", summary, "TOOL_SCHEMA_INVALID", List.copyOf(violations));
+                    false,
+                    null,
+                    "error",
+                    summary,
+                    com.vagent.eval.EvalErrorCodes.TOOL_SCHEMA_INVALID,
+                    List.copyOf(violations));
         }
     }
 

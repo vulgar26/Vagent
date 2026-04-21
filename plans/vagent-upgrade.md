@@ -108,7 +108,7 @@
 - **`evidenceMap[]`（P1-5）**：已实现服务端规则提取（目前覆盖 **numeric/date**；numeric 为「千分位 / 小数 / 连续位数≥2」优先级 span，避免四位整数被误切）并在 `requires_citations=true && behavior=answer` 时返回 `evidence_map[]`；`capabilities.guardrails.evidence_map=true`。
 - **SSE 正常 RAG 命中**：首帧 **`chat_stream_channel=sse`**；在 **`retrieveTrace != null`** 时写入 **`canonical_hit_id_scheme`**、**`retrieval_candidate_total`**、**`retrieval_candidate_limit_n`**、**`retrieval_hit_id_hashes[]`**、**`retrieval_membership_*`**（见上 A-2）；SSE 哈希 k_case **非** `X-Eval-Token`。未配置 **`sse-membership-hmac-secret`** 时哈希列表为 **`[]`**。安全短路仍走 **`applySafetyShortCircuitMeta`** 占位，并写 **`retrieval_membership_top_n`** 等对齐键。
 - **P1-4 主链路工具治理（D1–D4）**：**无**完整 **`ToolRegistry`（版本/resultSchema/审计/配额）**；已有 **`echo`/`ping` 入参** JSON Schema 与 **`TOOL_SCHEMA_INVALID`**（见 §P1-4 块引用）；**无** MCP **出参** schema、专用审计表 / 配额限流。
-- **P1-0 后续「error_code 字面」**：检索前 **`EvalChatSafetyGate` 的 `clarify`** 已使用 **`GUARDRAIL_TRIGGERED`**（**非** `RETRIEVE_LOW_CONFIDENCE`）；B-3 起把核心 `error_code` / `low_confidence_*` 字段收口为 SSOT 常量类（避免散落字符串）。
+- **P1-0 后续「error_code 字面」**：检索前 **`EvalChatSafetyGate` 的 `clarify`** 已使用 **`GUARDRAIL_TRIGGERED`**（**非** `RETRIEVE_LOW_CONFIDENCE`）；B-3 起把核心 `error_code` / `low_confidence_*` 字段收口为 SSOT 常量类（避免散落字符串），并补齐工具侧 `TOOL_SCHEMA_INVALID` 与 `meta.tool_*` 键名的 SSOT。
 
 #### 未在代码中实现（文档仍为建议项）
 

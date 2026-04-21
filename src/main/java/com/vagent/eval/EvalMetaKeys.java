@@ -23,5 +23,9 @@ public final class EvalMetaKeys {
     public static final String RETRIEVAL_HIT_ID_HASHES = "retrieval_hit_id_hashes";
 
     public static final String EVAL_SAFETY_RULE_ID = "eval_safety_rule_id";
+
+    // Tool attribution (meta only)
+    public static final String TOOL_ERROR_CODE = "tool_error_code";
+    public static final String TOOL_SCHEMA_VIOLATIONS = "tool_schema_violations";
 }
 
