@@ -85,7 +85,7 @@
 
 #### 部分实现 / 与文档愿景仍有差距
 
-- **`evidenceMap[]`（P1-5）**：已实现服务端规则提取（目前覆盖 **numeric/date**）并在 `requires_citations=true && behavior=answer` 时返回 `evidence_map[]`；`capabilities.guardrails.evidence_map=true`。
+- **`evidenceMap[]`（P1-5）**：已实现服务端规则提取（目前覆盖 **numeric/date**；numeric 为「千分位 / 小数 / 连续位数≥2」优先级 span，避免四位整数被误切）并在 `requires_citations=true && behavior=answer` 时返回 `evidence_map[]`；`capabilities.guardrails.evidence_map=true`。
 - **SSE 正常 RAG 命中**：首帧 **`meta`** **未**携带 **`retrieval_hit_id_hashes[]`**（仅 **`applySafetyShortCircuitMeta`** 置 **空列表** 占位）；**可复验 membership 为 eval 路径能力**，与 SSE 主路径不对等。
 - **P1-4 主链路工具治理（D1–D4）**：**无**完整 **`ToolRegistry`（版本/resultSchema/审计/配额）**；已有 **`echo`/`ping` 入参** JSON Schema 与 **`TOOL_SCHEMA_INVALID`**（见 §P1-4 块引用）；**无** MCP **出参** schema、专用审计表 / 配额限流。
 - **P1-0 后续「error_code 字面」**：检索前 **`EvalChatSafetyGate` 的 `clarify`** 已使用 **`GUARDRAIL_TRIGGERED`**（**非** `RETRIEVE_LOW_CONFIDENCE`）；其余路径若要做「全枚举 SSOT 常量类」仍可单开任务。

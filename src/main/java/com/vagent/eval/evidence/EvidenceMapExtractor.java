@@ -12,6 +12,8 @@ import java.util.regex.Pattern;
  * P1-S1：从 {@code answer + sources[]} 生成可规则验证的 {@code evidence_map[]}。
  * <p>
  * 约束：claim 必须由规则提取器生成（禁止 LLM 自由文本“伪结构化”），并且每条 claim 必须能在 sources.snippet 中被规则匹配支撑。
+ *
+ * <p>数字 span 为「千分位 / 小数点 / 连续位数（≥2）」分优先级组合，避免将 {@code 1200} 误切为 {@code 120}。
  */
 public final class EvidenceMapExtractor {
 
@@ -20,7 +22,17 @@ public final class EvidenceMapExtractor {
     // -------------------------
     // numeric/date extraction
     // -------------------------
-    private static final Pattern ANSWER_NUMERIC = Pattern.compile("\\d{1,3}(?:,\\d{3})*(?:\\.\\d+)?");
+    /**
+     * 答案中的数字 span，按分支从左到右尝试（避免 {@code \\d{1,3}(?:,\\d{3})*} 单独使用时把 {@code 1200} 切成 {@code 120}）：
+     * <ol>
+     *   <li>千分位分组：{@code 12,345}、{@code 1,234,567.89}（至少一段 {@code ,ddd}）</li>
+     *   <li>带小数点：{@code 3.14}、{@code 1200.5}</li>
+     *   <li>连续数字 ≥2 位：{@code 1200}、{@code 42}（单数字位不产出，与归一化后长度门槛一致）</li>
+     * </ol>
+     */
+    private static final Pattern ANSWER_NUMERIC_SPAN =
+            Pattern.compile(
+                    "(\\d{1,3}(?:,\\d{3})+(?:\\.\\d+)?)|(\\d+\\.\\d+)|(\\d{2,})");
     private static final Pattern ANSWER_DATE_YMD =
             Pattern.compile("(\\d{4})[-/](\\d{1,2})[-/](\\d{1,2})");
     private static final Pattern ANSWER_DATE_CN =
@@ -73,7 +85,7 @@ public final class EvidenceMapExtractor {
                         .toList();
 
         // numeric
-        Matcher nm = ANSWER_NUMERIC.matcher(answer);
+        Matcher nm = ANSWER_NUMERIC_SPAN.matcher(answer);
         while (nm.find() && out.size() < 8) {
             String norm = normalizeNumeric(nm.group());
             if (norm.isBlank()) {

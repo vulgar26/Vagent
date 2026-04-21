@@ -10,7 +10,7 @@
 |---------|------|-------------------------|
 | **`digits_only`** | 仅 **A**：连续数字串（≥3）须在 corpus 中出现。 | `strictness` 的 moderate/strict **不再追加** token/英文词层（仅数字层生效）。 |
 | **`digits_plus_tokens`**（默认） | **A + B**（及按档位的 **STRICT 英文词**）：与改 `scope` 前的历史行为一致。 | `relaxed`：仅 A；`moderate`：A + 长 token/混合码；`strict`：再卡英文长词。 |
-| **`digits_plus_tokens_plus_evidence`** | **A + B + C**：在通过子串核对后，若答案中存在长度 ≥3 的数字串，则每个数字串须在 **`evidence_map` 的 numeric 条目** 上可核对：优先 `claim_value` 归一化与数字串一致；否则若该条目 `source_ids` 所指 `snippet` 经去逗号后仍包含该数字串，亦视为已绑定（与 `EvidenceMapExtractor` 的 numeric 切分兼容）。`sources` 非空；无数字串时不强制非空 `evidence_map`。 | 子串层仍完全受 `strictness` 控制；**C 仅作用于数字串 → evidence 绑定**。 |
+| **`digits_plus_tokens_plus_evidence`** | **A + B + C**：在通过子串核对后，若答案中存在长度 ≥3 的数字串，则每个数字串须在 **`evidence_map` 的 numeric 条目** 上可核对：**`claim_value` 归一化后与该数字串一致**（与 `EvidenceMapExtractor` 的 numeric span 切分同源）。`sources` 非空；无数字串时不强制非空 `evidence_map`。 | 子串层仍完全受 `strictness` 控制；**C 仅作用于数字串 → evidence 绑定**。 |
 
 失败时 **C 层** 使用 `meta.reflection_reasons` 首条 **`QUOTE_ONLY_EVIDENCE_UNBOUND`**（子串层仍为 **`QUOTE_ONLY_UNGROUNDED`**），根级仍为 `behavior=deny`、`error_code=GUARDRAIL_TRIGGERED`。
 

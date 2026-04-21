@@ -220,17 +220,16 @@ public final class EvalQuoteOnlyGuard {
             if (norm.isEmpty()) {
                 continue;
             }
-            if (!numericEvidenceExplainsNorm(map, sources, norm)) {
+            if (!numericEvidenceExplainsNorm(map, norm)) {
                 return Optional.of("evidence_missing_digit:" + run);
             }
         }
         return Optional.empty();
     }
 
+    /** C 层：数字串归一化后与某条 numeric {@code claim_value} 一致即视为已绑定（与 {@link EvidenceMapExtractor} 切分一致）。 */
     private static boolean numericEvidenceExplainsNorm(
-            List<EvalChatResponse.EvidenceMapItem> map,
-            List<EvalChatResponse.Source> sources,
-            String norm) {
+            List<EvalChatResponse.EvidenceMapItem> map, String norm) {
         for (EvalChatResponse.EvidenceMapItem it : map) {
             if (it == null || !"numeric".equals(it.getClaimType())) {
                 continue;
@@ -239,30 +238,8 @@ public final class EvalQuoteOnlyGuard {
             if (norm.equals(claimNorm)) {
                 return true;
             }
-            if (it.getSourceIds() == null || it.getSourceIds().isEmpty()) {
-                continue;
-            }
-            for (String sid : it.getSourceIds()) {
-                EvalChatResponse.Source s = sourceById(sources, sid);
-                if (s != null && EvidenceMapExtractor.snippetSupportsNumericNorm(s.getSnippet(), norm)) {
-                    return true;
-                }
-            }
         }
         return false;
-    }
-
-    private static EvalChatResponse.Source sourceById(
-            List<EvalChatResponse.Source> sources, String id) {
-        if (sources == null || id == null || id.isBlank()) {
-            return null;
-        }
-        for (EvalChatResponse.Source s : sources) {
-            if (s != null && id.equals(s.getId())) {
-                return s;
-            }
-        }
-        return null;
     }
 
     private static String joinCorpus(List<String> hits) {
