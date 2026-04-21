@@ -45,6 +45,13 @@ public class GuardrailsProperties {
         private String strictness = "moderate";
 
         /**
+         * 规则包范围，与 {@link #strictness} 组合使用：{@code strictness} 控制各层敏感度，{@code scope} 控制启用哪些层。
+         * 取值 {@code digits_only} | {@code digits_plus_tokens} | {@code digits_plus_tokens_plus_evidence}；
+         * 非法值回退 {@code digits_plus_tokens}（与历史默认行为一致：数字 + token/英文词档位，不含结构化证据绑定）。
+         */
+        private String scope = "digits_plus_tokens";
+
+        /**
          * 为 true 时：主对话 SSE（{@link com.vagent.chat.RagStreamChatService}）在 RAG 有命中且走 LLM 时，
          * 先缓冲全文再发 {@code meta+chunk}，以便与 eval 同源执行 quote-only（默认 false，避免改变既有流式体验）。
          */
@@ -64,6 +71,14 @@ public class GuardrailsProperties {
 
         public void setStrictness(String strictness) {
             this.strictness = strictness != null ? strictness : "moderate";
+        }
+
+        public String getScope() {
+            return scope;
+        }
+
+        public void setScope(String scope) {
+            this.scope = scope != null ? scope : "digits_plus_tokens";
         }
 
         public boolean isApplyToSseStream() {

@@ -52,6 +52,8 @@ vagent:
       # 与 POST /api/v1/eval/chat 的 quote_only 请求字段配合；默认关闭。档位语义见 plans/quote-only-guardrails.md
       enabled: ${VAGENT_GUARDRAILS_QUOTE_ONLY_ENABLED:false}
       strictness: ${VAGENT_GUARDRAILS_QUOTE_ONLY_STRICTNESS:moderate}
+      # digits_only | digits_plus_tokens | digits_plus_tokens_plus_evidence；与 strictness 组合，默认与历史行为一致
+      scope: ${VAGENT_GUARDRAILS_QUOTE_ONLY_SCOPE:digits_plus_tokens}
       # 为 true 时：主对话 SSE 在 RAG 有命中时缓冲 LLM 全文后再发 meta+chunk，以应用 quote-only（默认 false）
       apply-to-sse-stream: ${VAGENT_GUARDRAILS_QUOTE_ONLY_APPLY_TO_SSE_STREAM:false}
   eval:

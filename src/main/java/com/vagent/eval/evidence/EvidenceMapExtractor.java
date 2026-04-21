@@ -130,6 +130,13 @@ public final class EvidenceMapExtractor {
     // numeric helpers
     // -------------------------
     private static String normalizeNumeric(String raw) {
+        return normalizeNumericClaimValue(raw);
+    }
+
+    /**
+     * 与 {@code evidence_map} 中 numeric 条目的 {@code claim_value} 同一套归一化，供 quote-only 证据绑定层比对。
+     */
+    public static String normalizeNumericClaimValue(String raw) {
         if (raw == null) {
             return "";
         }
@@ -141,6 +148,11 @@ public final class EvidenceMapExtractor {
     }
 
     private static boolean snippetContainsNumeric(String snippet, String numericNorm) {
+        return snippetSupportsNumericNorm(snippet, numericNorm);
+    }
+
+    /** 供 quote-only 证据绑定：snippet 去逗号后是否包含归一化数字串。 */
+    public static boolean snippetSupportsNumericNorm(String snippet, String numericNorm) {
         if (snippet == null || snippet.isBlank() || numericNorm == null || numericNorm.isBlank()) {
             return false;
         }

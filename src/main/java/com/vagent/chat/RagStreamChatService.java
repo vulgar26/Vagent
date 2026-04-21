@@ -343,6 +343,12 @@ public class RagStreamChatService {
                         guardrailsProperties.getQuoteOnly().getStrictness() != null
                                 ? guardrailsProperties.getQuoteOnly().getStrictness().trim().toLowerCase(Locale.ROOT)
                                 : "moderate";
+                String qoScope =
+                        guardrailsProperties.getQuoteOnly().getScope() != null
+                                ? guardrailsProperties.getQuoteOnly().getScope().trim().toLowerCase(Locale.ROOT)
+                                : "digits_plus_tokens";
+                EvalQuoteOnlyGuard.Scope quoteScope =
+                        EvalQuoteOnlyGuard.Scope.fromConfig(guardrailsProperties.getQuoteOnly().getScope());
                 llmSseStreamingBridge.streamChatToSse(
                         emitter,
                         taskId,
@@ -354,6 +360,7 @@ public class RagStreamChatService {
                         (emitter2, buf) -> {
                             metaExtra.put("quote_only", true);
                             metaExtra.put("quote_only_strictness", qs);
+                            metaExtra.put("quote_only_scope", qoScope);
                             if (!metaExtra.containsKey("guardrail_triggered")) {
                                 metaExtra.put("guardrail_triggered", false);
                             }
@@ -361,8 +368,12 @@ public class RagStreamChatService {
                                     EvalQuoteOnlyGuard.evaluate(
                                             EvalQuoteOnlyGuard.Strictness.fromConfig(
                                                     guardrailsProperties.getQuoteOnly().getStrictness()),
+                                            quoteScope,
                                             buf.toString(),
-                                            EvalQuoteOnlyGuard.corpusFromRetrieveHits(ragHitsForGuard));
+                                            EvalQuoteOnlyGuard.corpusFromRetrieveHits(ragHitsForGuard),
+                                            quoteScope == EvalQuoteOnlyGuard.Scope.DIGITS_PLUS_TOKENS_PLUS_EVIDENCE
+                                                    ? EvalQuoteOnlyGuard.sourcesFromRetrieveHits(ragHitsForGuard)
+                                                    : null);
                             if (patchOpt.isPresent()) {
                                 var p = patchOpt.get();
                                 buf.setLength(0);

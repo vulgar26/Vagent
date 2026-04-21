@@ -61,8 +61,8 @@ import static org.springframework.http.HttpStatus.NOT_FOUND;
  * <p>Day6：可选 {@code vagent.eval.api.allow-cidrs} 限制明文 debug 的客户端网段；返回前再次剔除越界 {@code retrieval_hit_ids}。</p>
  * <p>Day7：{@code vagent.guardrails.reflection.enabled} 时一次性门控：{@code meta.guardrail_triggered}、{@code reflection_outcome}、
  * {@code reflection_reasons[]} 与可归因 {@code error_code}（如 {@code SOURCE_NOT_IN_HITS}、{@code GUARDRAIL_TRIGGERED}）。</p>
- * <p>Quote-only：{@code vagent.guardrails.quote-only.enabled} 且请求 {@code quote_only=true} 时，由 {@link EvalQuoteOnlyGuard} 做子串核对；
- * 档位见 {@code plans/quote-only-guardrails.md}。</p>
+ * <p>Quote-only：{@code vagent.guardrails.quote-only.enabled} 且请求 {@code quote_only=true} 时，由 {@link EvalQuoteOnlyGuard} 执行；
+ * {@code strictness} 与 {@code scope} 见 {@code plans/quote-only-guardrails.md}。</p>
  *
  * <p>P0+：读取 {@code X-Eval-Membership-Top-N}（缺省用 {@code vagent.eval.api.membership-top-n}），使 {@code sources} 与根级
  * {@code retrieval_hits} 同前 N 条候选，与 vagent-eval {@code verifyCitationMembership} 的 top_n 对齐（§16.4）。</p>
@@ -323,16 +323,27 @@ public class EvalChatController {
                     guardrailsProperties.getQuoteOnly().getStrictness() != null
                             ? guardrailsProperties.getQuoteOnly().getStrictness().trim().toLowerCase(Locale.ROOT)
                             : "moderate";
+            String qoScope =
+                    guardrailsProperties.getQuoteOnly().getScope() != null
+                            ? guardrailsProperties.getQuoteOnly().getScope().trim().toLowerCase(Locale.ROOT)
+                            : "digits_plus_tokens";
             meta.put("quote_only", true);
             meta.put("quote_only_strictness", qs);
+            meta.put("quote_only_scope", qoScope);
             if (!meta.containsKey("guardrail_triggered")) {
                 meta.put("guardrail_triggered", false);
             }
+            EvalQuoteOnlyGuard.Scope quoteScope =
+                    EvalQuoteOnlyGuard.Scope.fromConfig(guardrailsProperties.getQuoteOnly().getScope());
             Optional<EvalReflectionOneShotGuard.Patch> quotePatch =
                     EvalQuoteOnlyGuard.evaluate(
                             EvalQuoteOnlyGuard.Strictness.fromConfig(guardrailsProperties.getQuoteOnly().getStrictness()),
+                            quoteScope,
                             answer,
-                            EvalQuoteOnlyGuard.corpusFromRetrieveHits(candidates));
+                            EvalQuoteOnlyGuard.corpusFromRetrieveHits(candidates),
+                            quoteScope == EvalQuoteOnlyGuard.Scope.DIGITS_PLUS_TOKENS_PLUS_EVIDENCE
+                                    ? sources
+                                    : null);
             if (quotePatch.isPresent()) {
                 EvalReflectionOneShotGuard.Patch p = quotePatch.get();
                 answer = p.answer();

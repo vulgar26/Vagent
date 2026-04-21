@@ -32,7 +32,7 @@
 | 仓库根目录 [分桶统计脚本](../scripts/summarize-p0-eval-buckets.ps1) | 对导出的 results 与题集 JSONL 做分桶统计（用法见 `vagent-upgrade.md`） |
 | [混合检索与 rerank 的 A/B 对比](../scripts/README-hybrid-rerank-ab.md) | 同一 `dataset_id`、离线/在线 compare、`StrictContractGate` 契约门禁；可选 GitHub **`hybrid-ab-compare`** workflow（§5） |
 | [评测知识库说明](../scripts/README-eval-kb.md) | 空库 / gold、混合检索对比入口 |
-| [Quote-only 门控语义与档位](quote-only-guardrails.md) | `EvalQuoteOnlyGuard` + `vagent.guardrails.quote-only.*` + 请求体 `quote_only` 的 SSOT |
+| [Quote-only 门控语义与档位](quote-only-guardrails.md) | `EvalQuoteOnlyGuard` + `vagent.guardrails.quote-only.*`（`strictness` + `scope`）+ 请求体 `quote_only` 的 SSOT |
 | [GitHub Actions 连真实 eval](ci-eval-github-actions.md) | 公网 / 自托管 runner / 隧道；`eval-remote.yml` + `scripts/ci-eval-remote.sh`（轮询参数、失败退出码、报告 artifact、`GITHUB_STEP_SUMMARY`） |
 | [CI 评测烟测（双阶段 Maven）](eval-ci-smoke.md) | `eval-smoke` / `skip-eval-in-ci` profile 与 `ci.yml` 顺序 |
 

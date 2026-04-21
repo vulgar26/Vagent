@@ -18,7 +18,7 @@
 - **可观测**：请求级 **MDC `traceId`**、响应头 **`X-Trace-Id`**；异步流式线程传递 MDC；Micrometer 计时 **`vagent.rag.retrieve`**、**`vagent.chat.stream`**。
 - **DashScope**：流式对话 **`vagent.llm.provider=dashscope`**；嵌入 **`vagent.embedding.provider=dashscope`**（默认 **1024** 维，须与库表一致）。
 - **MCP**：**`vagent.mcp.enabled`** 打开后提供 **`/api/v1/mcp/*`** 联调；**`vagent.orchestration.tool-intent-enabled`** 与 **`vagent.mcp.allowed-tools`** 控制主链路是否在 RAG 分支显式调用工具并把结果写入系统上下文，**`meta`** 可出现 **`toolUsed`**、**`toolName`** 等。
-- **评测接口**：**`POST /api/v1/eval/chat`**（snake_case、非流式）；**`vagent.eval.api.enabled=false`** 时整段 **`/api/v1/eval/**`** 返回 **404**；启用后校验 **`X-Eval-Token`**（配置为明文 token 的 **SHA-256 小写 hex**，勿把明文提交进仓库）。支持 debug 模式下的命中 id 透出限制、**`full-answer-enabled`** 聚合真实回答、与 **`vagent.guardrails.reflection.*`** 配合的一次性门控（Eval **`meta`** 中相关字段）；可选 **`vagent.guardrails.quote-only.*`** + 请求体 **`quote_only: true`** 的 **quote-only** 子串门控（语义见 **`plans/quote-only-guardrails.md`**）；**`tool_policy=stub`** 时的进程内桩工具（**`vagent.eval.api.stub-tools-enabled`**）；**`tool_policy=real`** 时在 **`vagent.mcp.enabled`** 且 **`McpClient`** 就绪下用 **`tool_stub_id`** 作为 MCP 工具名同步调用（**`vagent.mcp.tool-call-timeout`**，与主链路一致；非 **`stub-tool-timeout-ms`**；否则澄清短路）；**`expected_behavior=tool`** 与非可执行工具策略的澄清短路。
+- **评测接口**：**`POST /api/v1/eval/chat`**（snake_case、非流式）；**`vagent.eval.api.enabled=false`** 时整段 **`/api/v1/eval/**`** 返回 **404**；启用后校验 **`X-Eval-Token`**（配置为明文 token 的 **SHA-256 小写 hex**，勿把明文提交进仓库）。支持 debug 模式下的命中 id 透出限制、**`full-answer-enabled`** 聚合真实回答、与 **`vagent.guardrails.reflection.*`** 配合的一次性门控（Eval **`meta`** 中相关字段）；可选 **`vagent.guardrails.quote-only.*`**（**`strictness`** + **`scope`**）+ 请求体 **`quote_only: true`** 的 **quote-only** 子串门控（语义见 **`plans/quote-only-guardrails.md`**）；**`tool_policy=stub`** 时的进程内桩工具（**`vagent.eval.api.stub-tools-enabled`**）；**`tool_policy=real`** 时在 **`vagent.mcp.enabled`** 且 **`McpClient`** 就绪下用 **`tool_stub_id`** 作为 MCP 工具名同步调用（**`vagent.mcp.tool-call-timeout`**，与主链路一致；非 **`stub-tool-timeout-ms`**；否则澄清短路）；**`expected_behavior=tool`** 与非可执行工具策略的澄清短路。
 - **运维与演示**：Actuator（健康、指标等）；根目录 **Docker Compose**（PostgreSQL + pgvector）；**Dockerfile** 与 **`deploy/k8s/`** 演示清单。
 
 ---
@@ -111,7 +111,7 @@ docker compose up -d
 | `vagent.mcp.*` | MCP Client 开关、URL、协议版本、**主链路允许的工具名列表** |
 | `vagent.eval.api.*` | Eval 开关、token 哈希、debug 与 IP 限制、full-answer、membership top-N 等 |
 | `vagent.guardrails.reflection.*` | Eval 路径可选的一次性门控（默认关闭） |
-| `vagent.guardrails.quote-only.*` | Eval **quote-only** 档位（`relaxed` / `moderate` / `strict`），须与请求 **`quote_only`** 同开；可选 **`apply-to-sse-stream`** 使主对话 SSE 缓冲全文后与 eval 同源门控 |
+| `vagent.guardrails.quote-only.*` | Eval **quote-only**：**`strictness`**（`relaxed` / `moderate` / `strict`）与 **`scope`**（`digits_only` / `digits_plus_tokens` / `digits_plus_tokens_plus_evidence`）；须与请求 **`quote_only`** 同开；可选 **`apply-to-sse-stream`** 使主对话 SSE 缓冲全文后与 eval 同源门控 |
 
 生产建议使用 **`--spring.profiles.active=prod`**，并设置 **`VAGENT_SECURITY_JWT_SECRET`**（长度与强度满足 **`application-prod.yml`** 要求）及各类密钥。
 
@@ -139,7 +139,7 @@ docker compose up -d
 - **调试**：**`vagent.eval.api.debug-enabled=true`** 且请求 **`mode=EVAL_DEBUG`** 时，`meta` 才可能含明文 **`retrieval_hit_ids[]`**；可配合 **`allow-cidrs`**、**`trust-forwarded-headers`** 收紧。  
 - **行为**：与主线共享检索与门控；**`vagent.eval.api.full-answer-enabled=true`** 时可在通过门控后调用 **`LlmClient`** 生成正文（默认占位以降低 CI 成本与外网依赖）。  
 - **工具题**：**`tool_policy=stub`** 走进程内桩（结构化 payload 默认经 **`classpath:/eval/stub-schemas/*.schema.json`** 校验，可用 **`vagent.eval.api.stub-tool-json-schema-validation-enabled`** 关闭）；**`tool_policy=real`** 在 MCP 就绪时用 **`tool_stub_id`** 调 **`McpClient`**（否则澄清）；详见 **`scripts/README-eval-kb.md`** §5。  
-- **Quote-only**：服务端 **`vagent.guardrails.quote-only.enabled=true`** 且 JSON **`"quote_only": true`** 时，对 **`behavior=answer`** 做检索正文子串核对；档位、与 **reflection** 的执行顺序、以及可选 **SSE 缓冲对齐**（**`quote-only.apply-to-sse-stream`**）见 **`plans/quote-only-guardrails.md`**。  
+- **Quote-only**：服务端 **`vagent.guardrails.quote-only.enabled=true`** 且 JSON **`"quote_only": true`** 时，对 **`behavior=answer`** 做门控；**`strictness`** 控制敏感度，**`scope`** 控制只卡数字、数字+token、或再要求 **evidence_map** 数字绑定；**`meta.quote_only_scope`** 回显生效范围。与 **reflection** 的顺序及可选 **SSE 缓冲**（**`quote-only.apply-to-sse-stream`**）见 **`plans/quote-only-guardrails.md`**。  
 - **数据脚本**：**`scripts/README-eval-kb.md`**；混合检索 / rerank A/B 与 compare 契约门禁见 **`scripts/README-hybrid-rerank-ab.md`**。
 
 ---

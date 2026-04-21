@@ -2,6 +2,20 @@
 
 本页是 **实现语义 SSOT**：与代码 `EvalQuoteOnlyGuard`、配置 `vagent.guardrails.quote-only.*` 一致；修改判定时应同步更新本文件。
 
+## 规则包范围（`scope`）
+
+配置：`vagent.guardrails.quote-only.scope`（环境变量 `VAGENT_GUARDRAILS_QUOTE_ONLY_SCOPE`），取值（不区分大小写，`-` / `_` 等价）：
+
+| `scope` | 含义 | 与 `strictness` 的关系 |
+|---------|------|-------------------------|
+| **`digits_only`** | 仅 **A**：连续数字串（≥3）须在 corpus 中出现。 | `strictness` 的 moderate/strict **不再追加** token/英文词层（仅数字层生效）。 |
+| **`digits_plus_tokens`**（默认） | **A + B**（及按档位的 **STRICT 英文词**）：与改 `scope` 前的历史行为一致。 | `relaxed`：仅 A；`moderate`：A + 长 token/混合码；`strict`：再卡英文长词。 |
+| **`digits_plus_tokens_plus_evidence`** | **A + B + C**：在通过子串核对后，若答案中存在长度 ≥3 的数字串，则每个数字串须在 **`evidence_map` 的 numeric 条目** 上可核对：优先 `claim_value` 归一化与数字串一致；否则若该条目 `source_ids` 所指 `snippet` 经去逗号后仍包含该数字串，亦视为已绑定（与 `EvidenceMapExtractor` 的 numeric 切分兼容）。`sources` 非空；无数字串时不强制非空 `evidence_map`。 | 子串层仍完全受 `strictness` 控制；**C 仅作用于数字串 → evidence 绑定**。 |
+
+失败时 **C 层** 使用 `meta.reflection_reasons` 首条 **`QUOTE_ONLY_EVIDENCE_UNBOUND`**（子串层仍为 **`QUOTE_ONLY_UNGROUNDED`**），根级仍为 `behavior=deny`、`error_code=GUARDRAIL_TRIGGERED`。
+
+评测 **`meta`** 会写入 **`quote_only_scope`**（小写字符串，与配置一致）。
+
 ## Eval：`reflection` 与 `quote_only` 的执行顺序
 
 当 **`vagent.guardrails.reflection.enabled=true`** 且请求 **`quote_only: true`** 同时满足各自前提时，`EvalChatController` **先**执行 `EvalReflectionOneShotGuard`（引用闭环、低置信超长），**仅当**根级 **`behavior` 仍为 `answer`** 时再执行 `EvalQuoteOnlyGuard`。若 reflection 已改为 `deny`/`clarify`，**不再**跑 quote-only，避免重复门控与矛盾 `meta`。
@@ -37,7 +51,7 @@
 
 ## 严格度档位（`strictness`）
 
-配置：`vagent.guardrails.quote-only.strictness`，取值 **`relaxed` / `moderate` / `strict`**（不区分大小写）；非法值回退 **`moderate`**。
+配置：`vagent.guardrails.quote-only.strictness`，取值 **`relaxed` / `moderate` / `strict`**（不区分大小写）；非法值回退 **`moderate`**。须与上表 **`scope`** 联读：`digits_only` 时仅本表中 **RELAXED** 数字规则生效。
 
 | 档位 | 含义（大白话） | 规则摘要 |
 |------|----------------|----------|
@@ -68,3 +82,8 @@
 - 英文说明题多、希望减少「凭空英文术语」：**strict**。
 
 修改档位后若 CI 或 eval 大量误杀，应优先 **收紧 corpus**（检索是否召回正确 chunk），再考虑降档。
+
+## 合并后与 CI 回归建议
+
+- 变更 **`EvalQuoteOnlyGuard`**、评测门控顺序、或 **`EvidenceMapExtractor`** 等与 quote-only 共用逻辑后，应执行 **全量** `./mvnw test`（勿仅跑 `EvalQuoteOnlyGuardTest` 等子集），以免其它 Spring 集成测试回归未被发现。
+- 题集或流水线若 **固定依赖**某一 **`scope`** 语义，请在部署环境显式设置 **`VAGENT_GUARDRAILS_QUOTE_ONLY_SCOPE`**（或 `application.yml` 中的 `vagent.guardrails.quote-only.scope`），避免默认值与命题假设不一致。

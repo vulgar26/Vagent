@@ -1,7 +1,11 @@
 package com.vagent.eval;
 
+import com.vagent.eval.dto.EvalChatResponse;
+import com.vagent.eval.evidence.EvidenceMapExtractor;
 import com.vagent.kb.dto.RetrieveHit;
 
+import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
@@ -13,7 +17,7 @@ import java.util.regex.Pattern;
 /**
  * Quote-only：答案中的「高风险片段」必须能在本次检索候选的正文里找到子串，否则一次性降级为
  * {@code deny} + {@code GUARDRAIL_TRIGGERED}。严格度由配置 {@code vagent.guardrails.quote-only.strictness} 控制，
- * 语义见 {@code plans/quote-only-guardrails.md}。
+ * 规则包范围由 {@code vagent.guardrails.quote-only.scope} 控制，语义见 {@code plans/quote-only-guardrails.md}。
  */
 public final class EvalQuoteOnlyGuard {
 
@@ -51,12 +55,51 @@ public final class EvalQuoteOnlyGuard {
     }
 
     /**
-     * @param strictness 严格度档位
-     * @param answer     拟返回正文
-     * @param corpusHits 候选命中正文（与检索 top-N 同源，通常来自 chunk content）
+     * 与 {@code vagent.guardrails.quote-only.scope} 对齐：控制启用数字 / token / 证据绑定哪几层。
+     */
+    public enum Scope {
+        /** 仅连续数字串（≥3）子串核对。 */
+        DIGITS_ONLY,
+        /** 数字 +（按 strictness）moderate token / strict 英文词。 */
+        DIGITS_PLUS_TOKENS,
+        /** 在 {@link #DIGITS_PLUS_TOKENS} 之上，要求长度 ≥3 的每个数字串在可规则生成的 {@code evidence_map} 中有 numeric 支撑。 */
+        DIGITS_PLUS_TOKENS_PLUS_EVIDENCE;
+
+        public static Scope fromConfig(String raw) {
+            if (raw == null || raw.isBlank()) {
+                return DIGITS_PLUS_TOKENS;
+            }
+            String n = raw.trim().toLowerCase(Locale.ROOT).replace('-', '_');
+            return switch (n) {
+                case "digits_only" -> DIGITS_ONLY;
+                case "digits_plus_tokens" -> DIGITS_PLUS_TOKENS;
+                case "digits_plus_tokens_plus_evidence" -> DIGITS_PLUS_TOKENS_PLUS_EVIDENCE;
+                default -> DIGITS_PLUS_TOKENS;
+            };
+        }
+    }
+
+    /**
+     * 与 {@link #evaluate(Strictness, Scope, String, List, List)} 相同，默认 {@link Scope#DIGITS_PLUS_TOKENS}、不跑证据绑定。
      */
     public static Optional<EvalReflectionOneShotGuard.Patch> evaluate(
             Strictness strictness, String answer, List<String> corpusHits) {
+        return evaluate(strictness, Scope.DIGITS_PLUS_TOKENS, answer, corpusHits, null);
+    }
+
+    /**
+     * @param strictness 严格度档位
+     * @param scope      启用 A/B/C 哪几层
+     * @param answer     拟返回正文
+     * @param corpusHits 候选命中正文（与检索 top-N 同源，通常来自 chunk content）
+     * @param sources    与评测 {@code sources[]} 同源；仅 {@link Scope#DIGITS_PLUS_TOKENS_PLUS_EVIDENCE} 需要，可为 {@code null}
+     */
+    public static Optional<EvalReflectionOneShotGuard.Patch> evaluate(
+            Strictness strictness,
+            Scope scope,
+            String answer,
+            List<String> corpusHits,
+            List<EvalChatResponse.Source> sources) {
         if (corpusHits == null || corpusHits.isEmpty()) {
             return Optional.empty();
         }
@@ -64,36 +107,151 @@ public final class EvalQuoteOnlyGuard {
         if (corpus.isEmpty()) {
             return Optional.empty();
         }
+        Scope s = scope != null ? scope : Scope.DIGITS_PLUS_TOKENS;
         String a = answer != null ? answer : "";
 
         Optional<String> relaxedFail = checkRelaxed(a, corpus);
         if (relaxedFail.isPresent()) {
             return patch(relaxedFail.get());
         }
-        if (strictness == Strictness.RELAXED) {
+        if (s == Scope.DIGITS_ONLY) {
             return Optional.empty();
         }
 
-        Optional<String> moderateFail = checkModerateBeyondRelaxed(a, corpus);
-        if (moderateFail.isPresent()) {
-            return patch(moderateFail.get());
+        if (strictness != Strictness.RELAXED) {
+            Optional<String> moderateFail = checkModerateBeyondRelaxed(a, corpus);
+            if (moderateFail.isPresent()) {
+                return patch(moderateFail.get());
+            }
         }
-        if (strictness == Strictness.MODERATE) {
-            return Optional.empty();
+        if (strictness == Strictness.STRICT) {
+            Optional<String> strictFail = checkStrictAsciiWords(a, corpus);
+            if (strictFail.isPresent()) {
+                return patch(strictFail.get());
+            }
         }
 
-        Optional<String> strictFail = checkStrictAsciiWords(a, corpus);
-        return strictFail.map(EvalQuoteOnlyGuard::patch).orElse(Optional.empty());
+        if (s == Scope.DIGITS_PLUS_TOKENS_PLUS_EVIDENCE) {
+            return checkEvidenceBinding(a, sources).flatMap(EvalQuoteOnlyGuard::patch);
+        }
+        return Optional.empty();
     }
 
     private static Optional<EvalReflectionOneShotGuard.Patch> patch(String reasonDetail) {
+        boolean evidenceBind = reasonDetail != null && reasonDetail.startsWith("evidence_");
+        String msg =
+                evidenceBind
+                        ? "回答中的数字结论无法在 evidence_map 中与引用片段规则对齐（quote-only），已拒绝输出。"
+                        : "回答中存在无法在检索正文中核对的片段（quote-only），已拒绝输出。";
+        String tag = evidenceBind ? "QUOTE_ONLY_EVIDENCE_UNBOUND" : "QUOTE_ONLY_UNGROUNDED";
         return Optional.of(
                 new EvalReflectionOneShotGuard.Patch(
-                        "回答中存在无法在检索正文中核对的片段（quote-only），已拒绝输出。",
+                        msg,
                         "deny",
                         "GUARDRAIL_TRIGGERED",
                         "deny",
-                        List.of("QUOTE_ONLY_UNGROUNDED", reasonDetail)));
+                        List.of(tag, reasonDetail)));
+    }
+
+    /**
+     * 将检索命中映射为 evidence 绑定所需的 {@link EvalChatResponse.Source}（id + snippet，与 eval 响应同源口径）。
+     */
+    public static List<EvalChatResponse.Source> sourcesFromRetrieveHits(List<RetrieveHit> hits) {
+        if (hits == null || hits.isEmpty()) {
+            return List.of();
+        }
+        List<EvalChatResponse.Source> out = new ArrayList<>();
+        for (RetrieveHit h : hits) {
+            if (h == null) {
+                continue;
+            }
+            String id = h.getChunkId() != null && !h.getChunkId().isBlank() ? h.getChunkId().trim() : "";
+            if (id.isEmpty() && h.getDocumentId() != null && !h.getDocumentId().isBlank()) {
+                id = h.getDocumentId().trim();
+            }
+            if (id.isEmpty()) {
+                continue;
+            }
+            String snippet = h.getContent() != null ? h.getContent() : "";
+            out.add(new EvalChatResponse.Source(id, null, snippet));
+        }
+        return List.copyOf(out);
+    }
+
+    /** 证据绑定层：每个长度 ≥3 的数字串必须在 {@link EvidenceMapExtractor} 产出的 numeric 条目中可比对命中。 */
+    private static Optional<String> checkEvidenceBinding(
+            String answer, List<EvalChatResponse.Source> sources) {
+        if (sources == null || sources.isEmpty()) {
+            Matcher dm = DIGIT_RUN.matcher(answer);
+            if (dm.find()) {
+                return Optional.of("evidence_sources_missing");
+            }
+            return Optional.empty();
+        }
+        List<EvalChatResponse.EvidenceMapItem> map = EvidenceMapExtractor.buildEvidenceMap(answer, sources);
+        Matcher m = DIGIT_RUN.matcher(answer);
+        LinkedHashSet<String> runs = new LinkedHashSet<>();
+        while (m.find()) {
+            runs.add(m.group());
+        }
+        if (runs.isEmpty()) {
+            return Optional.empty();
+        }
+        boolean anyNumericItem =
+                map.stream()
+                        .anyMatch(
+                                it -> it != null && "numeric".equals(it.getClaimType()));
+        if (!anyNumericItem) {
+            return Optional.of("evidence_map_missing_numeric");
+        }
+        for (String run : runs) {
+            String norm = EvidenceMapExtractor.normalizeNumericClaimValue(run);
+            if (norm.isEmpty()) {
+                continue;
+            }
+            if (!numericEvidenceExplainsNorm(map, sources, norm)) {
+                return Optional.of("evidence_missing_digit:" + run);
+            }
+        }
+        return Optional.empty();
+    }
+
+    private static boolean numericEvidenceExplainsNorm(
+            List<EvalChatResponse.EvidenceMapItem> map,
+            List<EvalChatResponse.Source> sources,
+            String norm) {
+        for (EvalChatResponse.EvidenceMapItem it : map) {
+            if (it == null || !"numeric".equals(it.getClaimType())) {
+                continue;
+            }
+            String claimNorm = EvidenceMapExtractor.normalizeNumericClaimValue(it.getClaimValue());
+            if (norm.equals(claimNorm)) {
+                return true;
+            }
+            if (it.getSourceIds() == null || it.getSourceIds().isEmpty()) {
+                continue;
+            }
+            for (String sid : it.getSourceIds()) {
+                EvalChatResponse.Source s = sourceById(sources, sid);
+                if (s != null && EvidenceMapExtractor.snippetSupportsNumericNorm(s.getSnippet(), norm)) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    private static EvalChatResponse.Source sourceById(
+            List<EvalChatResponse.Source> sources, String id) {
+        if (sources == null || id == null || id.isBlank()) {
+            return null;
+        }
+        for (EvalChatResponse.Source s : sources) {
+            if (s != null && id.equals(s.getId())) {
+                return s;
+            }
+        }
+        return null;
     }
 
     private static String joinCorpus(List<String> hits) {
