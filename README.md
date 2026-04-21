@@ -151,6 +151,7 @@ docker compose up -d
 ```
 
 - **默认**：`test` profile + **H2**（**`schema-core.sql`**），不跑 Flyway；RAG 在测试配置中通常关闭。  
+- **门控 / quote-only 等变更**：合并前建议在**本机**跑一次**完整** `./mvnw test`（勿只跑 `EvalQuoteOnlyGuardTest` 等子集），以免其它 Spring 集成用例回归未被发现；约定见 **`plans/quote-only-guardrails.md`**（「合并后与 CI 回归建议」）。  
 - **需本机 Docker 的 pgvector 集成测**：Surefire 默认排除部分类以免拉镜像过慢，可按需单独运行：
 
 ```bash

@@ -14,7 +14,8 @@
 ./mvnw test -P skip-eval-in-ci
 ```
 
-与 CI 一致；本机仍可直接 **`./mvnw test`** 跑全量（含 eval），不做拆分。
+与 CI 一致；本机仍可直接 **`./mvnw test`** 跑全量（含 eval），不做拆分。  
+修改 **`EvalQuoteOnlyGuard`** 或与 quote-only 共用的 **evidence** 抽取逻辑时：除上述两阶段烟测外，合并前仍建议至少一次 **全量** `./mvnw test`（CI 分阶段不会在同一次 JVM 里跑满所有模块），约定见 **`quote-only-guardrails.md`**（「合并后与 CI 回归建议」）。
 
 ## 可观测与回归基线
 
