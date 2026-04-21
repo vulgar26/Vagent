@@ -32,6 +32,7 @@ import com.vagent.mcp.client.McpClient;
 import com.vagent.mcp.config.McpProperties;
 import com.vagent.mcp.tools.McpToolArgumentSchemaValidator;
 import com.vagent.mcp.tools.McpToolResultSchemaValidator;
+import com.vagent.mcp.tools.ToolRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -103,6 +104,7 @@ public class RagStreamChatService {
     private final McpProperties mcpProperties;
     private final McpToolArgumentSchemaValidator mcpToolArgumentSchemaValidator;
     private final McpToolResultSchemaValidator mcpToolResultSchemaValidator;
+    private final ToolRegistry toolRegistry;
     private final EvalApiProperties evalApiProperties;
     private final RagPostRetrieveGateSettings ragPostRetrieveGateSettings;
     private final GuardrailsProperties guardrailsProperties;
@@ -122,6 +124,7 @@ public class RagStreamChatService {
             McpProperties mcpProperties,
             McpToolArgumentSchemaValidator mcpToolArgumentSchemaValidator,
             McpToolResultSchemaValidator mcpToolResultSchemaValidator,
+            ToolRegistry toolRegistry,
             EvalApiProperties evalApiProperties,
             RagPostRetrieveGateSettings ragPostRetrieveGateSettings,
             GuardrailsProperties guardrailsProperties,
@@ -140,6 +143,7 @@ public class RagStreamChatService {
         this.mcpProperties = mcpProperties;
         this.mcpToolArgumentSchemaValidator = mcpToolArgumentSchemaValidator;
         this.mcpToolResultSchemaValidator = mcpToolResultSchemaValidator;
+        this.toolRegistry = toolRegistry;
         this.evalApiProperties = evalApiProperties;
         this.ragPostRetrieveGateSettings = ragPostRetrieveGateSettings;
         this.guardrailsProperties = guardrailsProperties;
@@ -713,6 +717,14 @@ public class RagStreamChatService {
                         || (toolErrorCode != null && !toolErrorCode.isBlank());
         if (toolAttribution && toolName != null && !toolName.isBlank()) {
             meta.put("toolName", toolName);
+            if (toolRegistry != null) {
+                toolRegistry
+                        .toolVersion(toolName)
+                        .ifPresent(v -> meta.put(com.vagent.eval.EvalMetaKeys.TOOL_VERSION, v));
+                toolRegistry
+                        .toolSchemaHash(toolName)
+                        .ifPresent(h -> meta.put(com.vagent.eval.EvalMetaKeys.TOOL_SCHEMA_HASH, h));
+            }
         }
         if (toolOutcome != null && !toolOutcome.isBlank()) {
             meta.put("toolOutcome", toolOutcome);

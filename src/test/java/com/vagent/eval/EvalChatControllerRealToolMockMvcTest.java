@@ -64,6 +64,8 @@ class EvalChatControllerRealToolMockMvcTest {
                 .andExpect(jsonPath("$.tool.succeeded").value(true))
                 .andExpect(jsonPath("$.tool.name").value("echo"))
                 .andExpect(jsonPath("$.meta.eval_real_tools").value(true))
+                .andExpect(jsonPath("$.meta.tool_version").value("1.0.0"))
+                .andExpect(jsonPath("$.meta.tool_schema_hash").isString())
                 .andExpect(jsonPath("$.capabilities.tools.supported").value(true));
     }
 

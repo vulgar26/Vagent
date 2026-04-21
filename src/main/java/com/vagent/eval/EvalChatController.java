@@ -44,6 +44,7 @@ import com.vagent.mcp.client.McpClient;
 import com.vagent.mcp.config.McpProperties;
 import com.vagent.mcp.tools.McpToolArgumentSchemaValidator;
 import com.vagent.mcp.tools.McpToolResultSchemaValidator;
+import com.vagent.mcp.tools.ToolRegistry;
 
 import static org.springframework.http.HttpStatus.NOT_FOUND;
 
@@ -95,6 +96,7 @@ public class EvalChatController {
     private final ObjectProvider<McpClient> mcpClientProvider;
     private final McpToolArgumentSchemaValidator mcpToolArgumentSchemaValidator;
     private final McpToolResultSchemaValidator mcpToolResultSchemaValidator;
+    private final ToolRegistry toolRegistry;
 
     public EvalChatController(
             EvalApiProperties evalApiProperties,
@@ -109,7 +111,8 @@ public class EvalChatController {
             McpProperties mcpProperties,
             ObjectProvider<McpClient> mcpClientProvider,
             McpToolArgumentSchemaValidator mcpToolArgumentSchemaValidator,
-            McpToolResultSchemaValidator mcpToolResultSchemaValidator) {
+            McpToolResultSchemaValidator mcpToolResultSchemaValidator,
+            ToolRegistry toolRegistry) {
         this.evalApiProperties = evalApiProperties;
         this.debugNetworkPolicy = debugNetworkPolicy;
         this.guardrailsProperties = guardrailsProperties;
@@ -124,6 +127,7 @@ public class EvalChatController {
         this.mcpClientProvider = mcpClientProvider;
         this.mcpToolArgumentSchemaValidator = mcpToolArgumentSchemaValidator;
         this.mcpToolResultSchemaValidator = mcpToolResultSchemaValidator;
+        this.toolRegistry = toolRegistry;
     }
 
     @PostMapping("/chat")
@@ -635,6 +639,11 @@ public class EvalChatController {
                     null,
                     toolBlock,
                     null);
+        }
+
+        if (toolRegistry != null) {
+            toolRegistry.toolVersion(toolName).ifPresent(v -> meta.put(EvalMetaKeys.TOOL_VERSION, v));
+            toolRegistry.toolSchemaHash(toolName).ifPresent(h -> meta.put(EvalMetaKeys.TOOL_SCHEMA_HASH, h));
         }
 
         McpClient client = mcpClientProvider.getIfAvailable();

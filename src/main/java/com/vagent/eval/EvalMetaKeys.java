@@ -27,5 +27,7 @@ public final class EvalMetaKeys {
     // Tool attribution (meta only)
     public static final String TOOL_ERROR_CODE = "tool_error_code";
     public static final String TOOL_SCHEMA_VIOLATIONS = "tool_schema_violations";
+    public static final String TOOL_VERSION = "tool_version";
+    public static final String TOOL_SCHEMA_HASH = "tool_schema_hash";
 }
 
