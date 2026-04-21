@@ -85,6 +85,8 @@
 
 **检索与 membership**：`retrieve_hit_count`，`canonical_hit_id_scheme`，`retrieval_candidate_total`，`retrieval_candidate_limit_n`，`retrieval_hit_id_hashes`。
 
+**用户 SSE 首帧（`POST .../chat/stream`，与评测 JSON 区分）**：`chat_stream_channel`（固定 `sse`）；有检索 trace 时另可含 **`retrieval_membership_top_n`**、**`retrieval_membership_hashes_enabled`**、**`retrieval_membership_hashes_count`**（与 **`vagent.eval.api.membership-top-n`** / **`sse-membership-hmac-secret`** 对齐运维读数；**不**写入评测专用 **`x_eval_*`** / **`mode`**，避免与 eval 混淆）。
+
 **Hybrid / rerank**：`hybrid_enabled`，`hybrid_lexical_outcome`，`hybrid_lexical_mode`，`hybrid_primary_chunk_id_count`，`hybrid_lexical_chunk_id_count`，`hybrid_fused_chunk_id_count`，`hybrid_chunk_id_delta_rate`，`rerank_enabled`，`rerank_outcome`，`rerank_latency_ms`。
 
 **距离（有命中时）**：`retrieve_top1_distance`，`retrieve_top1_distance_bucket`，`retrieve_topk_distance_p50`，`retrieve_topk_distance_p95`，`retrieve_topk_distance_buckets`。

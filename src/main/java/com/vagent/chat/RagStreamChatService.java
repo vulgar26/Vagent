@@ -73,7 +73,9 @@ import static org.springframework.http.HttpStatus.NOT_FOUND;
  * {@code behavior=answer} 且不写 {@code error_code}（等同根级无归因码）。安全短路、检索后门控短路、意图澄清分支同理。</p>
  *
  * <p>RAG 且携带 {@link RagRetrieveResult} 时，首帧另写入 {@code canonical_hit_id_scheme}、{@code retrieval_candidate_*}、
- * {@code retrieval_hit_id_hashes}（与评测字段名一致；SSE 哈希密钥见 {@code vagent.rag.sse-membership-hmac-secret}）。</p>
+ * {@code retrieval_hit_id_hashes}（与评测字段名一致；SSE 哈希密钥见 {@code vagent.rag.sse-membership-hmac-secret}），以及
+ * {@code retrieval_membership_top_n}、{@code retrieval_membership_hashes_enabled}、{@code retrieval_membership_hashes_count}（A-2 运维对齐）。
+ * 所有经 {@link #sendMeta} 的首帧还带 {@code chat_stream_channel=sse}。</p>
  *
  * <p>可选：{@code vagent.guardrails.quote-only.enabled=true} 且 {@code apply-to-sse-stream=true} 时，RAG 有命中则先缓冲 LLM 全文，
  * 再经 {@link EvalQuoteOnlyGuard} 与 eval 同源写 {@code meta} 后一次性 {@code chunk}（见 {@code plans/quote-only-guardrails.md}）。</p>
@@ -315,6 +317,9 @@ public class RagStreamChatService {
             Map<String, Object> metaExtra = new LinkedHashMap<>();
             if (hitCount == 0 && ragProperties.getEmptyHitsBehavior() == EmptyHitsBehavior.ALLOW_LLM) {
                 RagPostRetrieveGate.applyZeroHitsAllowLlmMeta(metaExtra);
+            } else if (hitCount > 0 && retrieveTrace != null) {
+                metaExtra.put("low_confidence", false);
+                metaExtra.put("low_confidence_reasons", List.of());
             }
             boolean sseBufferedQuoteOnly =
                     guardrailsProperties != null
@@ -441,6 +446,10 @@ public class RagStreamChatService {
             meta.put("branch", ChatBranch.RAG.name());
             meta.put("toolUsed", false);
             applySafetyShortCircuitMeta(meta, outcome);
+            meta.put("chat_stream_channel", "sse");
+            meta.put("retrieval_membership_top_n", evalMembershipTopNCap());
+            meta.put("retrieval_membership_hashes_enabled", false);
+            meta.put("retrieval_membership_hashes_count", 0);
             EvalBehaviorMetaSync.applyRootToMeta(meta, outcome.behavior(), outcome.errorCode());
             sendEvent(emitter, meta);
             if (taskRegistry.isCancelled(taskId)) {
@@ -516,16 +525,10 @@ public class RagStreamChatService {
     }
 
     /**
-     * 澄清分支与 U3 空命中：不经过 {@link com.vagent.llm.LlmClient}，推送固定文案并完成 SSE，同时落库 ASSISTANT。
-     * <p>
-     * 流程：meta → chunk → done。
-     *
-     * @param hitCount meta 中的 hitCount（澄清与空命中为 0）
-     */
-    /**
      * SSE 首帧：在 hybrid/距离等 {@link RagRetrieveResult#putRetrievalTrace} 之后补齐
      * {@code canonical_hit_id_scheme}、{@code retrieval_candidate_*}、{@code retrieval_hit_id_hashes}（哈希需配置
-     * {@code vagent.rag.sse-membership-hmac-secret}，与评测 E7 密钥材料不同源）。
+     * {@code vagent.rag.sse-membership-hmac-secret}，与评测 E7 密钥材料不同源），以及 **A-2** 对齐字段
+     * {@code retrieval_membership_top_n} / {@code retrieval_membership_hashes_enabled} / {@code retrieval_membership_hashes_count}。
      */
     private void attachSseRetrievalMembershipSlice(
             Map<String, Object> meta,
@@ -533,6 +536,18 @@ public class RagStreamChatService {
             String taskId,
             UUID sseMembershipUserId,
             String sseMembershipConversationId) {
+        int membershipTopNCap = evalMembershipTopNCap();
+        meta.put("retrieval_membership_top_n", membershipTopNCap);
+        boolean hashesMaterializable =
+                ragProperties.getSseMembershipHmacSecret() != null
+                        && !ragProperties.getSseMembershipHmacSecret().isEmpty()
+                        && sseMembershipUserId != null
+                        && sseMembershipConversationId != null
+                        && !sseMembershipConversationId.isBlank()
+                        && taskId != null
+                        && !taskId.isBlank();
+        meta.put("retrieval_membership_hashes_enabled", hashesMaterializable);
+
         List<RetrieveHit> rh = retrieveTrace.hits();
         int candidateTotal = rh == null ? 0 : rh.size();
         meta.put("canonical_hit_id_scheme", "kb_chunk_id");
@@ -540,15 +555,10 @@ public class RagStreamChatService {
         if (candidateTotal == 0) {
             meta.put("retrieval_candidate_limit_n", 0);
             meta.put("retrieval_hit_id_hashes", List.of());
+            meta.put("retrieval_membership_hashes_count", 0);
             return;
         }
-        int cap =
-                Math.max(
-                        1,
-                        Math.min(
-                                evalApiProperties.getMembershipTopN(),
-                                RetrievalMembershipHasher.ENGINE_MEMBERSHIP_CAP));
-        int limitN = Math.min(cap, candidateTotal);
+        int limitN = Math.min(membershipTopNCap, candidateTotal);
         List<RetrieveHit> candidates = rh.subList(0, limitN);
         meta.put("retrieval_candidate_limit_n", limitN);
         List<String> ids = new ArrayList<>();
@@ -559,12 +569,28 @@ public class RagStreamChatService {
             }
         }
         String secret = ragProperties.getSseMembershipHmacSecret();
-        meta.put(
-                "retrieval_hit_id_hashes",
+        List<String> hashes =
                 RetrievalMembershipHasher.buildSseHitIdHashes(
-                        secret, sseMembershipUserId, sseMembershipConversationId, taskId, ids));
+                        secret, sseMembershipUserId, sseMembershipConversationId, taskId, ids);
+        meta.put("retrieval_hit_id_hashes", hashes);
+        meta.put("retrieval_membership_hashes_count", hashes.size());
     }
 
+    private int evalMembershipTopNCap() {
+        return Math.max(
+                1,
+                Math.min(
+                        evalApiProperties.getMembershipTopN(),
+                        RetrievalMembershipHasher.ENGINE_MEMBERSHIP_CAP));
+    }
+
+    /**
+     * 澄清分支与 U3 空命中：不经过 {@link com.vagent.llm.LlmClient}，推送固定文案并完成 SSE，同时落库 ASSISTANT。
+     * <p>
+     * 流程：meta → chunk → done。
+     *
+     * @param hitCount meta 中的 hitCount（澄清与空命中为 0）
+     */
     private void runFixedAssistantStream(
             SseEmitter emitter,
             String taskId,
@@ -626,6 +652,7 @@ public class RagStreamChatService {
         meta.put("hitCount", hitCount);
         meta.put("retrieve_hit_count", hitCount);
         meta.put("branch", branch);
+        meta.put("chat_stream_channel", "sse");
         if (retrieveTrace != null) {
             retrieveTrace.putRetrievalTrace(meta);
             attachSseRetrievalMembershipSlice(

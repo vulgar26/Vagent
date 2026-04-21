@@ -10,7 +10,7 @@
 
 | 代号 | 主题 | 缺口摘要 | 备注 |
 |------|------|----------|------|
-| **A** | SSE 与评测 **meta** 对等 | 用户侧 SSE 首帧曾缺 **`retrieval_hit_id_hashes`** / **`canonical_hit_id_scheme`** / **`retrieval_candidate_*`** 与评测对齐 | **A-1 已做**：`RagStreamChatService#sendMeta` 在 `retrieveTrace != null` 时写入；哈希需 **`vagent.rag.sse-membership-hmac-secret`**（与评测 **E7** 的 `X-Eval-Token` **不同源**）。可选 **A-2**：与客户端/运营约定是否暴露更多 trace。 |
+| **A** | SSE 与评测 **meta** 对等 | 用户侧 SSE 首帧曾缺 **`retrieval_hit_id_hashes`** / **`canonical_hit_id_scheme`** / **`retrieval_candidate_*`** 与评测对齐 | **A-1**：membership 形状 + 可选哈希（**`sse-membership-hmac-secret`**，非 **E7** token）。**A-2**：**`chat_stream_channel`**、**`retrieval_membership_top_n` / `hashes_enabled` / `hashes_count`**；RAG 有命中且走 LLM 时补 **`low_confidence=false`**。 |
 | **B** | 门控与 **error_code** | `rag/low_conf` 与 **`SAFETY_QUERY_GATE`** 归因并存；全路径 **error_code SSOT**、**`vagent.rag.low-confidence-*` 配置绑定**仍可选 | 报表口径与配置见「已知缺口」 |
 | **C** | Hybrid / rerank | **外部 rerank 供应商**未接入（`rerank_outcome=skipped`） | A/B compare 流程见 **P1-0b** |
 | **D** | 工具治理 **P1-4** | 缺完整 **`ToolRegistry`**、MCP **出参** schema、审计表、配额 | 入参 schema 已有部分（echo/ping） |
@@ -22,7 +22,7 @@
 #### A 分步（大白话）
 
 - **A-1（当前迭代）**：评测 HTTP 早就把「命中了哪些 chunk」用 **哈希列表**告诉 eval，方便验 **sources 有没有撒谎**；用户聊 SSE 那边以前只有 hybrid/距离等，**没有同形状的 membership 字段**。现在在 **`type=meta` 首帧**里，只要有检索结果对象，就补上 **`canonical_hit_id_scheme`**、**`retrieval_candidate_total`**、**`retrieval_candidate_limit_n`**；哈希列表默认仍是 **`[]`**，只有你配置了 **`sse-membership-hmac-secret`**（和评测用的 token **不是一回事**）才填非空——避免没配密钥却假装能给 eval 验算。
-- **A-2（以后可选）**：要不要给 SSE 也塞满和 eval 一模一样的 debug 键、或首帧带 **distance 以外**的更多字段，再单开需求。
+- **A-2（已做）**：首帧统一带 **`chat_stream_channel=sse`**（与评测 **`mode`** 不混用，避免把流式误当成 `EVAL_DEBUG`）。有 **`retrieveTrace`** 时再带 **`retrieval_membership_top_n`**（与 **`vagent.eval.api.membership-top-n`** + 硬顶 50 一致）、**`retrieval_membership_hashes_enabled`**（密钥与用户上下文齐否）、**`retrieval_membership_hashes_count`**（当前帧实际条数）。RAG **有命中且继续走 LLM** 时显式写 **`low_confidence=false`** 与空 **`low_confidence_reasons`**，和评测过门后成功路径对齐。安全短路无检索 trace 时仍写 **`chat_stream_channel`** 与 **`retrieval_membership_top_n`**，哈希相关布尔/计数为关/0。
 
 ---
 
@@ -106,7 +106,7 @@
 #### 部分实现 / 与文档愿景仍有差距
 
 - **`evidenceMap[]`（P1-5）**：已实现服务端规则提取（目前覆盖 **numeric/date**；numeric 为「千分位 / 小数 / 连续位数≥2」优先级 span，避免四位整数被误切）并在 `requires_citations=true && behavior=answer` 时返回 `evidence_map[]`；`capabilities.guardrails.evidence_map=true`。
-- **SSE 正常 RAG 命中**：首帧在 **`retrieveTrace != null`** 时写入 **`canonical_hit_id_scheme`**、**`retrieval_candidate_total`**、**`retrieval_candidate_limit_n`**、**`retrieval_hit_id_hashes[]`**（与评测 **E7** 同字段名；SSE 哈希的 k_case 见 **`vagent.rag.sse-membership-hmac-secret`**，**非** `X-Eval-Token`）；未配置该密钥时哈希列表为 **`[]`**。安全短路仍走 **`applySafetyShortCircuitMeta`** 占位。
+- **SSE 正常 RAG 命中**：首帧 **`chat_stream_channel=sse`**；在 **`retrieveTrace != null`** 时写入 **`canonical_hit_id_scheme`**、**`retrieval_candidate_total`**、**`retrieval_candidate_limit_n`**、**`retrieval_hit_id_hashes[]`**、**`retrieval_membership_*`**（见上 A-2）；SSE 哈希 k_case **非** `X-Eval-Token`。未配置 **`sse-membership-hmac-secret`** 时哈希列表为 **`[]`**。安全短路仍走 **`applySafetyShortCircuitMeta`** 占位，并写 **`retrieval_membership_top_n`** 等对齐键。
 - **P1-4 主链路工具治理（D1–D4）**：**无**完整 **`ToolRegistry`（版本/resultSchema/审计/配额）**；已有 **`echo`/`ping` 入参** JSON Schema 与 **`TOOL_SCHEMA_INVALID`**（见 §P1-4 块引用）；**无** MCP **出参** schema、专用审计表 / 配额限流。
 - **P1-0 后续「error_code 字面」**：检索前 **`EvalChatSafetyGate` 的 `clarify`** 已使用 **`GUARDRAIL_TRIGGERED`**（**非** `RETRIEVE_LOW_CONFIDENCE`）；其余路径若要做「全枚举 SSOT 常量类」仍可单开任务。
 
