@@ -94,6 +94,12 @@
 
 修改档位后若 CI 或 eval 大量误杀，应优先 **收紧 corpus**（检索是否召回正确 chunk），再考虑降档。
 
+## 大白话速读（和 `requires_citations` 一起出现时）
+
+- **先改卷、再查抄、最后交证据表**：机器先看 **reflection**（若开）→ 再看 **quote-only**（若开）→ 最后才按 **`requires_citations`** 要不要交 **`evidence_map[]`**。前面已经判「不能答」了，后面就不会多此一举。
+- **最严 quote-only（带证据绑定）和「必须交证据表」**：都要从同一份答案里**抽一张证据表**。实现上会**尽量用同一张表**，避免同一道题抽两遍、结果还对不齐。
+- **交不出证据表**：根上还是 **`error_code=EVIDENCE_NOT_SUPPORTED`**（老逻辑不用改）；`meta` 里会多写 **`reflection_outcome` / `reflection_reasons`**（里面有 **`EVIDENCE_MAP_EMPTY`**），方便人和报表一眼看出是「证据表空的」，而不是别的门控。
+
 ## 合并后与 CI 回归建议
 
 - 变更 **`EvalQuoteOnlyGuard`**、评测门控顺序、或 **`EvidenceMapExtractor`** 等与 quote-only 共用逻辑后，应执行 **全量** `./mvnw test`（勿仅跑 `EvalQuoteOnlyGuardTest` 等子集），以免其它 Spring 集成测试回归未被发现。

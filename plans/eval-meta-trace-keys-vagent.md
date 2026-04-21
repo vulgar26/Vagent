@@ -65,8 +65,15 @@
 - `retrieval_candidate_limit_n`
 - `behavior`（SSE 首帧 `meta` 与评测根级对齐时；eval 结果 `meta` 若落库也可选带）
 - `error_code`（同上；成功路径常为缺省/`null`）
+- **`evidence_map_required`** / **`evidence_map_outcome`**（`ok` / `missing`；与根级 **`requires_citations`**、`evidence_map[]` 联动时）
+- **`reflection_outcome`** / **`reflection_reasons`**（门控与 **P1-S1** 缺证据时可能含 **`EVIDENCE_MAP_EMPTY`** 等；与 compare 归因同读）
 
 **说明**：`0` 命中时部分距离键可能不存在，compare 里缺键属预期，不单独算失败。
+
+### 4.3 大白话（何时把上面几条放进 trace）
+
+- **想分清「是检索烂、还是门控卡、还是证据表交不齐」**：扩展档里把 **`error_code`**、**`reflection_reasons`**、**`evidence_map_outcome`** 打开，比只看 **`pass/fail`** 省心。
+- **根上仍是老错误码**：例如缺证据还是 **`EVIDENCE_NOT_SUPPORTED`**；**`reflection_reasons`** 里多一条 **`EVIDENCE_MAP_EMPTY`** 只是**给人看的标签**，方便和 quote-only 那套 **`reflection_*`** 键一起扫日志。
 
 ---
 
@@ -82,7 +89,7 @@
 
 **距离（有命中时）**：`retrieve_top1_distance`，`retrieve_top1_distance_bucket`，`retrieve_topk_distance_p50`，`retrieve_topk_distance_p95`，`retrieve_topk_distance_buckets`。
 
-**门控 / 安全 / 反思（分支依赖）**：`low_confidence`，`low_confidence_reasons`，`disabled_reason`，`eval_safety_rule_id`，`guardrail_triggered`，`reflection_outcome`，`reflection_reasons`；**quote-only**（与 `quote_only` 请求同开时）：`quote_only`，`quote_only_strictness`，`quote_only_scope`，`quote_only_passed`；**P1-S1**：`requires_citations=true` 且无法生成 **`evidence_map`** 时（根级 **`EVIDENCE_NOT_SUPPORTED`**）可含 **`reflection_outcome`** / **`reflection_reasons`**（如 **`EVIDENCE_MAP_EMPTY`**）；**P1-0**：短路路径可含 **`behavior`**、**`error_code`**（与评测 JSON 根级同值，便于 SSE 与 eval 对照）；条件满足时曾有 `retrieval_hit_ids`（不建议进 trace）。
+**门控 / 安全 / 反思（分支依赖）**：`low_confidence`，`low_confidence_reasons`，`disabled_reason`，`eval_safety_rule_id`，`guardrail_triggered`，`reflection_outcome`，`reflection_reasons`；**quote-only**（与 `quote_only` 请求同开时）：`quote_only`，`quote_only_strictness`，`quote_only_scope`，`quote_only_passed`；**P1-S1 证据表**：`evidence_map_required`，`evidence_map_outcome`（`ok`/`missing`）；`requires_citations=true` 且无法生成 **`evidence_map`** 时（根级 **`EVIDENCE_NOT_SUPPORTED`**）可含 **`reflection_outcome`** / **`reflection_reasons`**（如 **`EVIDENCE_MAP_EMPTY`**）；**P1-0**：短路路径可含 **`behavior`**、**`error_code`**（与评测 JSON 根级同值，便于 SSE 与 eval 对照）；条件满足时曾有 `retrieval_hit_ids`（不建议进 trace）。
 
 **可选完整 `answer`（`vagent.eval.api.full-answer-enabled=true`）**：`eval_full_answer`（boolean），`eval_full_answer_outcome`（`ok` / `timeout` / `interrupted` / `error`）；未门控短路且走聚合 LLM 时出现；compare 是否纳入 trace 由 Regression Owner 决定（默认可不进最小集，避免与基线噪声）。
 

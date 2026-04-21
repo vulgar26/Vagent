@@ -140,6 +140,7 @@ docker compose up -d
 - **行为**：与主线共享检索与门控；**`vagent.eval.api.full-answer-enabled=true`** 时可在通过门控后调用 **`LlmClient`** 生成正文（默认占位以降低 CI 成本与外网依赖）。  
 - **工具题**：**`tool_policy=stub`** 走进程内桩（结构化 payload 默认经 **`classpath:/eval/stub-schemas/*.schema.json`** 校验，可用 **`vagent.eval.api.stub-tool-json-schema-validation-enabled`** 关闭）；**`tool_policy=real`** 在 MCP 就绪时用 **`tool_stub_id`** 调 **`McpClient`**（否则澄清）；详见 **`scripts/README-eval-kb.md`** §5。  
 - **Quote-only**：服务端 **`vagent.guardrails.quote-only.enabled=true`** 且 JSON **`"quote_only": true`** 时，对 **`behavior=answer`** 做门控；**`strictness`** 控制敏感度，**`scope`** 控制只卡数字、数字+token、或再要求 **evidence_map** 数字绑定；**`meta.quote_only_scope`** 回显当次生效范围。**`capabilities.guardrails`** 在总开关为 true 时另含 **`quote_only_scope`**（当前部署配置）与 **`quote_only_scopes_supported`**（实现支持的全部取值）。与 **reflection** 的顺序及可选 **SSE 缓冲**（**`quote-only.apply-to-sse-stream`**）见 **`plans/quote-only-guardrails.md`**。`full-answer-enabled` 下的 **`EvalChatControllerQuoteOnlyDigitsOnlyFullAnswerMockMvcTest`** / **`EvalChatControllerQuoteOnlyPlusEvidenceFullAnswerMockMvcTest`** 覆盖 `scope` 的 HTTP 路径。  
+- **`requires_citations` + 证据表**：题里要求 **`"requires_citations": true`** 时，通过门控后根级会带 **`evidence_map[]`**；交不出表仍为 **`error_code=EVIDENCE_NOT_SUPPORTED`**，**`meta`** 里会多 **`reflection_*`**（含 **`EVIDENCE_MAP_EMPTY`**）方便对账；若同时开 quote-only **最严档**，证据表与 quote-only **共用一次规则抽取**（见 **`plans/quote-only-guardrails.md`** 大白话节）。  
 - **数据脚本**：**`scripts/README-eval-kb.md`**；混合检索 / rerank A/B 与 compare 契约门禁见 **`scripts/README-hybrid-rerank-ab.md`**。
 
 ---
