@@ -5,6 +5,7 @@ import com.vagent.eval.evidence.EvidenceMapExtractor;
 import com.vagent.kb.dto.RetrieveHit;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
@@ -77,6 +78,16 @@ public final class EvalQuoteOnlyGuard {
                 default -> DIGITS_PLUS_TOKENS;
             };
         }
+    }
+
+    /**
+     * 评测 {@code capabilities.guardrails.quote_only_scopes_supported} 等契约：本实现识别、可在配置中使用的全部
+     * {@code scope} 名（小写 snake_case，与 {@link Scope} 枚举顺序一致）。
+     */
+    public static List<String> supportedScopeConfigNames() {
+        return Arrays.stream(Scope.values())
+                .map(e -> e.name().toLowerCase(Locale.ROOT))
+                .toList();
     }
 
     /**

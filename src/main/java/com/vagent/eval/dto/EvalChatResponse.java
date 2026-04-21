@@ -1,5 +1,6 @@
 package com.vagent.eval.dto;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 import com.fasterxml.jackson.databind.annotation.JsonNaming;
 
@@ -475,17 +476,37 @@ public class EvalChatResponse {
     }
 
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    @JsonInclude(JsonInclude.Include.NON_NULL)
     public static class GuardrailsFlag {
         private boolean quoteOnly;
         private boolean evidenceMap;
         private boolean reflection;
+        /**
+         * 当 {@link #quoteOnly} 为 true：服务端当前配置的 {@code vagent.guardrails.quote-only.scope}（小写，{@code -} 规范为 {@code _}）。
+         */
+        private String quoteOnlyScope;
+        /**
+         * 当 {@link #quoteOnly} 为 true：本实现识别、可在配置中使用的全部 {@code scope} 取值（与 {@code EvalQuoteOnlyGuard.Scope} 一致，稳定顺序）。
+         */
+        private List<String> quoteOnlyScopesSupported;
 
         public GuardrailsFlag() {}
 
         public GuardrailsFlag(boolean quoteOnly, boolean evidenceMap, boolean reflection) {
+            this(quoteOnly, evidenceMap, reflection, null, null);
+        }
+
+        public GuardrailsFlag(
+                boolean quoteOnly,
+                boolean evidenceMap,
+                boolean reflection,
+                String quoteOnlyScope,
+                List<String> quoteOnlyScopesSupported) {
             this.quoteOnly = quoteOnly;
             this.evidenceMap = evidenceMap;
             this.reflection = reflection;
+            this.quoteOnlyScope = quoteOnlyScope;
+            this.quoteOnlyScopesSupported = quoteOnlyScopesSupported;
         }
 
         public boolean isQuoteOnly() {
@@ -510,6 +531,22 @@ public class EvalChatResponse {
 
         public void setReflection(boolean reflection) {
             this.reflection = reflection;
+        }
+
+        public String getQuoteOnlyScope() {
+            return quoteOnlyScope;
+        }
+
+        public void setQuoteOnlyScope(String quoteOnlyScope) {
+            this.quoteOnlyScope = quoteOnlyScope;
+        }
+
+        public List<String> getQuoteOnlyScopesSupported() {
+            return quoteOnlyScopesSupported;
+        }
+
+        public void setQuoteOnlyScopesSupported(List<String> quoteOnlyScopesSupported) {
+            this.quoteOnlyScopesSupported = quoteOnlyScopesSupported;
         }
     }
 }

@@ -72,7 +72,14 @@ class EvalChatControllerQuoteOnlyMockMvcTest {
                 .andExpect(jsonPath("$.error_code").value("GUARDRAIL_TRIGGERED"))
                 .andExpect(jsonPath("$.meta.quote_only").value(true))
                 .andExpect(jsonPath("$.meta.guardrail_triggered").value(true))
-                .andExpect(jsonPath("$.capabilities.guardrails.quote_only").value(true));
+                .andExpect(jsonPath("$.capabilities.guardrails.quote_only").value(true))
+                .andExpect(jsonPath("$.capabilities.guardrails.quote_only_scope").value("digits_plus_tokens"))
+                .andExpect(jsonPath("$.capabilities.guardrails.quote_only_scopes_supported").isArray())
+                .andExpect(jsonPath("$.capabilities.guardrails.quote_only_scopes_supported.length()").value(3))
+                .andExpect(jsonPath("$.capabilities.guardrails.quote_only_scopes_supported[0]").value("digits_only"))
+                .andExpect(jsonPath("$.capabilities.guardrails.quote_only_scopes_supported[1]").value("digits_plus_tokens"))
+                .andExpect(jsonPath("$.capabilities.guardrails.quote_only_scopes_supported[2]")
+                        .value("digits_plus_tokens_plus_evidence"));
     }
 
     @Test

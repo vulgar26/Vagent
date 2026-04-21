@@ -71,9 +71,17 @@
 - **`meta.guardrail_triggered=true`**，`meta.reflection_outcome` / `meta.reflection_reasons` 与根级对齐（与 `EvalBehaviorMetaSync` 一致）。
 - `reflection_reasons` 至少含 **`QUOTE_ONLY_UNGROUNDED`**，并带一条简短机器可读原因（如 `digit_run:…` / `long_token:…`）。
 
-## 与 `capabilities.guardrails.quote_only`
+## 与 `capabilities.guardrails.*`（quote-only）
 
-当服务端总开关 **`quote-only.enabled=true`** 时，`capabilities.guardrails.quote_only` 为 **true**，表示 target **支持**该能力（题集仍须 `quote_only: true` 才会实际执行检查）。
+当服务端总开关 **`quote-only.enabled=true`** 时：
+
+| JSON 字段 | 含义 |
+|-----------|------|
+| **`capabilities.guardrails.quote_only`** | **true**：target 支持 quote-only（题集仍须在请求体写 **`quote_only: true`** 才会实际跑门控）。 |
+| **`capabilities.guardrails.quote_only_scope`** | 服务端**当前配置**的 **`vagent.guardrails.quote-only.scope`**（小写 snake_case，`-` 与 `_` 统一为 `_`），便于命题 / 流水线对齐部署值。 |
+| **`capabilities.guardrails.quote_only_scopes_supported`** | 本实现**识别且可配置**的全部 `scope` 取值（与 `EvalQuoteOnlyGuard.Scope` 枚举顺序一致），供 vagent-eval 等客户端做契约校验。 |
+
+当 **`quote_only` 为 false** 时，后两个字段在 JSON 中**省略**（`null` 不序列化）。
 
 ## 调参建议
 

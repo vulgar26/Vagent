@@ -79,7 +79,10 @@ class EvalChatControllerQuoteOnlyDigitsOnlyFullAnswerMockMvcTest {
                 .andExpect(jsonPath("$.meta.quote_only_scope").value("digits_only"))
                 .andExpect(jsonPath("$.meta.quote_only_strictness").value("moderate"))
                 .andExpect(jsonPath("$.meta.quote_only_passed").value(true))
-                .andExpect(jsonPath("$.meta.guardrail_triggered").value(false));
+                .andExpect(jsonPath("$.meta.guardrail_triggered").value(false))
+                .andExpect(jsonPath("$.capabilities.guardrails.quote_only_scope").value("digits_only"))
+                .andExpect(jsonPath("$.capabilities.guardrails.quote_only_scopes_supported[2]")
+                        .value("digits_plus_tokens_plus_evidence"));
     }
 
     private static List<RetrieveHit> singleHitBaseonlyAnd999() {

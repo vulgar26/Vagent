@@ -80,7 +80,9 @@ class EvalChatControllerQuoteOnlyPlusEvidenceFullAnswerMockMvcTest {
                 .andExpect(jsonPath("$.error_code").value("GUARDRAIL_TRIGGERED"))
                 .andExpect(jsonPath("$.meta.quote_only_scope").value("digits_plus_tokens_plus_evidence"))
                 .andExpect(jsonPath("$.meta.guardrail_triggered").value(true))
-                .andExpect(jsonPath("$.meta.reflection_reasons[0]").value("QUOTE_ONLY_EVIDENCE_UNBOUND"));
+                .andExpect(jsonPath("$.meta.reflection_reasons[0]").value("QUOTE_ONLY_EVIDENCE_UNBOUND"))
+                .andExpect(jsonPath("$.capabilities.guardrails.quote_only_scope")
+                        .value("digits_plus_tokens_plus_evidence"));
     }
 
     @Test
@@ -106,7 +108,9 @@ class EvalChatControllerQuoteOnlyPlusEvidenceFullAnswerMockMvcTest {
                 .andExpect(jsonPath("$.behavior").value("answer"))
                 .andExpect(jsonPath("$.answer").value(q))
                 .andExpect(jsonPath("$.meta.quote_only_passed").value(true))
-                .andExpect(jsonPath("$.meta.quote_only_scope").value("digits_plus_tokens_plus_evidence"));
+                .andExpect(jsonPath("$.meta.quote_only_scope").value("digits_plus_tokens_plus_evidence"))
+                .andExpect(jsonPath("$.capabilities.guardrails.quote_only_scope")
+                        .value("digits_plus_tokens_plus_evidence"));
     }
 
     private static List<RetrieveHit> singleHit(String chunkId, String content) {

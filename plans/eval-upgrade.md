@@ -661,6 +661,8 @@ Vagent 的 `POST /api/v1/eval/chat` meta 已提供：
 }
 ```
 
+**Vagent（snake_case 响应）补充**：当 **`guardrails.quote_only`** 为 **true** 时，另含 **`guardrails.quote_only_scope`**（当前部署的 `scope` 配置值）与 **`guardrails.quote_only_scopes_supported`**（实现支持的全部取值列表），便于题集 / compare 与运维配置对齐；语义见 **`plans/quote-only-guardrails.md`** §与 `capabilities.guardrails.*`。
+
 ### 字段缺失/不支持的统一语义
 
 - **不支持 ≠ 失败**：当 `capabilities` 声明不支持某项能力时，eval **不计算**对应指标，不将其计入 PASS/FAIL（除非该 case 明确要求该能力）。
