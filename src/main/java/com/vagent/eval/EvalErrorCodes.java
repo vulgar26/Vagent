@@ -23,5 +23,6 @@ public final class EvalErrorCodes {
     public static final String TOOL_TIMEOUT = "TOOL_TIMEOUT";
     public static final String TOOL_ERROR = "TOOL_ERROR";
     public static final String TOOL_SCHEMA_INVALID = "TOOL_SCHEMA_INVALID";
+    public static final String TOOL_RESULT_SCHEMA_INVALID = "TOOL_RESULT_SCHEMA_INVALID";
 }
 
