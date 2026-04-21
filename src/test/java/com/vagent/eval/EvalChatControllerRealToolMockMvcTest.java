@@ -91,6 +91,29 @@ class EvalChatControllerRealToolMockMvcTest {
     }
 
     @Test
+    void realToolResultSchemaInvalidMarksErrorCode() throws Exception {
+        when(mcpClient.callTool(eq("echo"), any()))
+                .thenReturn(Map.of("not_content", "x"));
+
+        mockMvc.perform(
+                        post("/api/v1/eval/chat")
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .header("X-Eval-Token", TOKEN_PLAINTEXT)
+                                .content(
+                                        "{\"query\":\"hello-echo\",\"mode\":\"EVAL\",\"requires_citations\":false,"
+                                                + "\"expected_behavior\":\"tool\",\"tool_policy\":\"real\","
+                                                + "\"tool_stub_id\":\"echo\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.behavior").value("tool"))
+                .andExpect(jsonPath("$.error_code").value("TOOL_RESULT_SCHEMA_INVALID"))
+                .andExpect(jsonPath("$.tool.used").value(true))
+                .andExpect(jsonPath("$.tool.succeeded").value(false))
+                .andExpect(jsonPath("$.tool.outcome").value("error"))
+                .andExpect(jsonPath("$.meta.tool_error_code").value("TOOL_RESULT_SCHEMA_INVALID"))
+                .andExpect(jsonPath("$.meta.tool_schema_violations").isArray());
+    }
+
+    @Test
     void realToolWithoutToolStubIdClarifies() throws Exception {
         mockMvc.perform(
                         post("/api/v1/eval/chat")

@@ -43,6 +43,7 @@ import com.vagent.eval.stub.EvalStubToolService;
 import com.vagent.mcp.client.McpClient;
 import com.vagent.mcp.config.McpProperties;
 import com.vagent.mcp.tools.McpToolArgumentSchemaValidator;
+import com.vagent.mcp.tools.McpToolResultSchemaValidator;
 
 import static org.springframework.http.HttpStatus.NOT_FOUND;
 
@@ -93,6 +94,7 @@ public class EvalChatController {
     private final McpProperties mcpProperties;
     private final ObjectProvider<McpClient> mcpClientProvider;
     private final McpToolArgumentSchemaValidator mcpToolArgumentSchemaValidator;
+    private final McpToolResultSchemaValidator mcpToolResultSchemaValidator;
 
     public EvalChatController(
             EvalApiProperties evalApiProperties,
@@ -106,7 +108,8 @@ public class EvalChatController {
             EvalStubToolService evalStubToolService,
             McpProperties mcpProperties,
             ObjectProvider<McpClient> mcpClientProvider,
-            McpToolArgumentSchemaValidator mcpToolArgumentSchemaValidator) {
+            McpToolArgumentSchemaValidator mcpToolArgumentSchemaValidator,
+            McpToolResultSchemaValidator mcpToolResultSchemaValidator) {
         this.evalApiProperties = evalApiProperties;
         this.debugNetworkPolicy = debugNetworkPolicy;
         this.guardrailsProperties = guardrailsProperties;
@@ -120,6 +123,7 @@ public class EvalChatController {
         this.mcpProperties = mcpProperties;
         this.mcpClientProvider = mcpClientProvider;
         this.mcpToolArgumentSchemaValidator = mcpToolArgumentSchemaValidator;
+        this.mcpToolResultSchemaValidator = mcpToolResultSchemaValidator;
     }
 
     @PostMapping("/chat")
@@ -673,12 +677,29 @@ public class EvalChatController {
 
         String behavior = "tool";
         String errorCode = null;
+        if (succeeded) {
+            Optional<List<String>> resultViolations = mcpToolResultSchemaValidator.validate(toolName, result);
+            if (resultViolations.isPresent()) {
+                List<String> viol = resultViolations.get();
+                meta.put(EvalMetaKeys.TOOL_ERROR_CODE, EvalErrorCodes.TOOL_RESULT_SCHEMA_INVALID);
+                meta.put(EvalMetaKeys.TOOL_SCHEMA_VIOLATIONS, viol);
+                succeeded = false;
+                outcome = "error";
+                errorCode = EvalErrorCodes.TOOL_RESULT_SCHEMA_INVALID;
+            }
+        }
+
         if ("timeout".equalsIgnoreCase(outcome)) {
             errorCode = EvalErrorCodes.TOOL_TIMEOUT;
-        } else if (!succeeded) {
+        } else if (!succeeded && errorCode == null) {
             errorCode = EvalErrorCodes.TOOL_ERROR;
         }
-        String answer = succeeded ? formatMcpToolResult(result) : "MCP 工具调用失败。";
+        String answer =
+                succeeded
+                        ? formatMcpToolResult(result)
+                        : (EvalErrorCodes.TOOL_RESULT_SCHEMA_INVALID.equals(errorCode)
+                                ? "MCP 工具出参未通过 JSON Schema 校验。"
+                                : "MCP 工具调用失败。");
 
         EvalChatResponse.Tool toolBlock =
                 new EvalChatResponse.Tool(true, true, succeeded, toolName, outcome, latencyMsTool);

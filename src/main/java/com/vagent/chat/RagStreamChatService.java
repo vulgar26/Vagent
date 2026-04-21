@@ -31,6 +31,7 @@ import com.vagent.user.UserIdFormats;
 import com.vagent.mcp.client.McpClient;
 import com.vagent.mcp.config.McpProperties;
 import com.vagent.mcp.tools.McpToolArgumentSchemaValidator;
+import com.vagent.mcp.tools.McpToolResultSchemaValidator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -101,6 +102,7 @@ public class RagStreamChatService {
     private final ObjectProvider<McpClient> mcpClientProvider;
     private final McpProperties mcpProperties;
     private final McpToolArgumentSchemaValidator mcpToolArgumentSchemaValidator;
+    private final McpToolResultSchemaValidator mcpToolResultSchemaValidator;
     private final EvalApiProperties evalApiProperties;
     private final RagPostRetrieveGateSettings ragPostRetrieveGateSettings;
     private final GuardrailsProperties guardrailsProperties;
@@ -119,6 +121,7 @@ public class RagStreamChatService {
             ObjectProvider<McpClient> mcpClientProvider,
             McpProperties mcpProperties,
             McpToolArgumentSchemaValidator mcpToolArgumentSchemaValidator,
+            McpToolResultSchemaValidator mcpToolResultSchemaValidator,
             EvalApiProperties evalApiProperties,
             RagPostRetrieveGateSettings ragPostRetrieveGateSettings,
             GuardrailsProperties guardrailsProperties,
@@ -136,6 +139,7 @@ public class RagStreamChatService {
         this.mcpClientProvider = mcpClientProvider;
         this.mcpProperties = mcpProperties;
         this.mcpToolArgumentSchemaValidator = mcpToolArgumentSchemaValidator;
+        this.mcpToolResultSchemaValidator = mcpToolResultSchemaValidator;
         this.evalApiProperties = evalApiProperties;
         this.ragPostRetrieveGateSettings = ragPostRetrieveGateSettings;
         this.guardrailsProperties = guardrailsProperties;
@@ -792,6 +796,10 @@ public class RagStreamChatService {
                 return ToolContextOutcome.schemaInvalid(schemaViolations.get());
             }
             Map<String, Object> result = client.callTool(toolName, args);
+            Optional<List<String>> resultViolations = mcpToolResultSchemaValidator.validate(toolName, result);
+            if (resultViolations.isPresent()) {
+                return ToolContextOutcome.resultSchemaInvalid(resultViolations.get());
+            }
             return ToolContextOutcome.used(buildToolContextPrompt(toolName, result));
         } catch (Exception e) {
             log.warn("mcp tool call failed: tool={}", toolName, e);
@@ -848,6 +856,22 @@ public class RagStreamChatService {
                     "error",
                     summary,
                     com.vagent.eval.EvalErrorCodes.TOOL_SCHEMA_INVALID,
+                    List.copyOf(violations));
+        }
+
+        static ToolContextOutcome resultSchemaInvalid(List<String> violations) {
+            String summary =
+                    violations.isEmpty()
+                            ? com.vagent.eval.EvalErrorCodes.TOOL_RESULT_SCHEMA_INVALID
+                            : String.join(
+                                    "; ",
+                                    violations.subList(0, Math.min(3, violations.size())));
+            return new ToolContextOutcome(
+                    false,
+                    null,
+                    "error",
+                    summary,
+                    com.vagent.eval.EvalErrorCodes.TOOL_RESULT_SCHEMA_INVALID,
                     List.copyOf(violations));
         }
     }
