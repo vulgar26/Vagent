@@ -66,6 +66,9 @@ class EvalChatControllerRealToolMockMvcTest {
                 .andExpect(jsonPath("$.meta.eval_real_tools").value(true))
                 .andExpect(jsonPath("$.meta.tool_version").value("1.0.0"))
                 .andExpect(jsonPath("$.meta.tool_schema_hash").isString())
+                .andExpect(jsonPath("$.meta.tool_arg_schema_validated").value(true))
+                .andExpect(jsonPath("$.meta.tool_result_schema_required").value(true))
+                .andExpect(jsonPath("$.meta.tool_result_schema_validated").value(true))
                 .andExpect(jsonPath("$.capabilities.tools.supported").value(true));
     }
 
@@ -87,7 +90,10 @@ class EvalChatControllerRealToolMockMvcTest {
                 .andExpect(jsonPath("$.tool.succeeded").value(false))
                 .andExpect(jsonPath("$.tool.outcome").value("error"))
                 .andExpect(jsonPath("$.meta.tool_error_code").value("TOOL_SCHEMA_INVALID"))
-                .andExpect(jsonPath("$.meta.tool_schema_violations").isArray());
+                .andExpect(jsonPath("$.meta.tool_schema_violations").isArray())
+                .andExpect(jsonPath("$.meta.tool_arg_schema_validated").value(false))
+                .andExpect(jsonPath("$.meta.tool_result_schema_required").value(true))
+                .andExpect(jsonPath("$.meta.tool_result_schema_validated").value(false));
 
         verify(mcpClient, never()).callTool(any(), any());
     }
@@ -112,7 +118,10 @@ class EvalChatControllerRealToolMockMvcTest {
                 .andExpect(jsonPath("$.tool.succeeded").value(false))
                 .andExpect(jsonPath("$.tool.outcome").value("error"))
                 .andExpect(jsonPath("$.meta.tool_error_code").value("TOOL_RESULT_SCHEMA_INVALID"))
-                .andExpect(jsonPath("$.meta.tool_schema_violations").isArray());
+                .andExpect(jsonPath("$.meta.tool_schema_violations").isArray())
+                .andExpect(jsonPath("$.meta.tool_arg_schema_validated").value(true))
+                .andExpect(jsonPath("$.meta.tool_result_schema_required").value(true))
+                .andExpect(jsonPath("$.meta.tool_result_schema_validated").value(false));
     }
 
     @Test

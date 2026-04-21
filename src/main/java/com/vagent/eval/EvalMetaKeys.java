@@ -29,5 +29,8 @@ public final class EvalMetaKeys {
     public static final String TOOL_SCHEMA_VIOLATIONS = "tool_schema_violations";
     public static final String TOOL_VERSION = "tool_version";
     public static final String TOOL_SCHEMA_HASH = "tool_schema_hash";
+    public static final String TOOL_ARG_SCHEMA_VALIDATED = "tool_arg_schema_validated";
+    public static final String TOOL_RESULT_SCHEMA_REQUIRED = "tool_result_schema_required";
+    public static final String TOOL_RESULT_SCHEMA_VALIDATED = "tool_result_schema_validated";
 }
 

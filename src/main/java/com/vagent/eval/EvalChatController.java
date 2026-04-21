@@ -644,6 +644,8 @@ public class EvalChatController {
         if (toolRegistry != null) {
             toolRegistry.toolVersion(toolName).ifPresent(v -> meta.put(EvalMetaKeys.TOOL_VERSION, v));
             toolRegistry.toolSchemaHash(toolName).ifPresent(h -> meta.put(EvalMetaKeys.TOOL_SCHEMA_HASH, h));
+            boolean resultRequired = toolRegistry.isResultSchemaRequired(toolName);
+            meta.put(EvalMetaKeys.TOOL_RESULT_SCHEMA_REQUIRED, resultRequired);
         }
 
         McpClient client = mcpClientProvider.getIfAvailable();
@@ -653,6 +655,12 @@ public class EvalChatController {
             List<String> viol = schemaViolations.get();
             meta.put(EvalMetaKeys.TOOL_ERROR_CODE, EvalErrorCodes.TOOL_SCHEMA_INVALID);
             meta.put(EvalMetaKeys.TOOL_SCHEMA_VIOLATIONS, viol);
+            if (toolRegistry != null && toolRegistry.argSchemaKey(toolName).isPresent()) {
+                meta.put(EvalMetaKeys.TOOL_ARG_SCHEMA_VALIDATED, false);
+            }
+            if (toolRegistry != null && toolRegistry.resultSchemaKey(toolName).isPresent()) {
+                meta.put(EvalMetaKeys.TOOL_RESULT_SCHEMA_VALIDATED, false);
+            }
             EvalBehaviorMetaSync.applyRootToMeta(meta, "tool", EvalErrorCodes.TOOL_SCHEMA_INVALID);
             enforceRetrievalHitIdBoundary(meta, mode, httpRequest);
             long latencyMs = (System.nanoTime() - startNs) / 1_000_000L;
@@ -669,6 +677,9 @@ public class EvalChatController {
                     EvalErrorCodes.TOOL_SCHEMA_INVALID,
                     toolBlock,
                     null);
+        }
+        if (toolRegistry != null && toolRegistry.argSchemaKey(toolName).isPresent()) {
+            meta.put(EvalMetaKeys.TOOL_ARG_SCHEMA_VALIDATED, true);
         }
         long t0 = System.nanoTime();
         String outcome = "success";
@@ -692,10 +703,18 @@ public class EvalChatController {
                 List<String> viol = resultViolations.get();
                 meta.put(EvalMetaKeys.TOOL_ERROR_CODE, EvalErrorCodes.TOOL_RESULT_SCHEMA_INVALID);
                 meta.put(EvalMetaKeys.TOOL_SCHEMA_VIOLATIONS, viol);
+                if (toolRegistry != null) {
+                    meta.put(EvalMetaKeys.TOOL_RESULT_SCHEMA_VALIDATED, false);
+                }
                 succeeded = false;
                 outcome = "error";
                 errorCode = EvalErrorCodes.TOOL_RESULT_SCHEMA_INVALID;
+            } else if (toolRegistry != null) {
+                meta.put(EvalMetaKeys.TOOL_RESULT_SCHEMA_VALIDATED, true);
             }
+        } else if (toolRegistry != null) {
+            // tool 调用失败（timeout/error）：未得到可校验 payload
+            meta.put(EvalMetaKeys.TOOL_RESULT_SCHEMA_VALIDATED, false);
         }
 
         if ("timeout".equalsIgnoreCase(outcome)) {

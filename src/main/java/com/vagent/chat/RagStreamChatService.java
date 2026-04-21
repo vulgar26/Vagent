@@ -812,6 +812,9 @@ public class RagStreamChatService {
                 toolRegistry
                         .toolSchemaHash(toolName)
                         .ifPresent(h -> meta.put(com.vagent.eval.EvalMetaKeys.TOOL_SCHEMA_HASH, h));
+                meta.put(
+                        com.vagent.eval.EvalMetaKeys.TOOL_RESULT_SCHEMA_REQUIRED,
+                        toolRegistry.isResultSchemaRequired(toolName));
             }
         }
         if (toolOutcome != null && !toolOutcome.isBlank()) {
@@ -827,6 +830,21 @@ public class RagStreamChatService {
             meta.put(
                     com.vagent.eval.EvalMetaKeys.TOOL_SCHEMA_VIOLATIONS,
                     List.copyOf(toolSchemaViolations));
+        }
+        if (toolRegistry != null && toolName != null && !toolName.isBlank()) {
+            boolean hasArgSchema = toolRegistry.argSchemaKey(toolName).isPresent();
+            boolean hasResultSchema = toolRegistry.resultSchemaKey(toolName).isPresent();
+            if (hasArgSchema && (toolUsed || (toolErrorCode != null && !toolErrorCode.isBlank()))) {
+                meta.put(
+                        com.vagent.eval.EvalMetaKeys.TOOL_ARG_SCHEMA_VALIDATED,
+                        !com.vagent.eval.EvalErrorCodes.TOOL_SCHEMA_INVALID.equals(toolErrorCode));
+            }
+            if (hasResultSchema && (toolUsed || (toolErrorCode != null && !toolErrorCode.isBlank()))) {
+                meta.put(
+                        com.vagent.eval.EvalMetaKeys.TOOL_RESULT_SCHEMA_VALIDATED,
+                        toolUsed
+                                && !com.vagent.eval.EvalErrorCodes.TOOL_RESULT_SCHEMA_INVALID.equals(toolErrorCode));
+            }
         }
         if (additionalMeta != null && !additionalMeta.isEmpty()) {
             for (Map.Entry<String, Object> e : additionalMeta.entrySet()) {
