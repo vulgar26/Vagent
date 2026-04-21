@@ -111,7 +111,7 @@ docker compose up -d
 | `vagent.mcp.*` | MCP Client 开关、URL、协议版本、**主链路允许的工具名列表** |
 | `vagent.eval.api.*` | Eval 开关、token 哈希、debug 与 IP 限制、full-answer、membership top-N 等 |
 | `vagent.guardrails.reflection.*` | Eval 路径可选的一次性门控（默认关闭） |
-| `vagent.guardrails.quote-only.*` | Eval **quote-only**：**`strictness`**（`relaxed` / `moderate` / `strict`）与 **`scope`**（`digits_only` / `digits_plus_tokens` / `digits_plus_tokens_plus_evidence`）；须与请求 **`quote_only`** 同开；可选 **`apply-to-sse-stream`** 使主对话 SSE 缓冲全文后与 eval 同源门控 |
+| `vagent.guardrails.quote-only.*` | Eval **quote-only**：**`strictness`** 与 **`scope`**；须与请求 **`quote_only`** 同开；可选 **`apply-to-sse-stream`** 使主对话 SSE 缓冲全文后与 eval 同源门控；缓冲路径首条 **`meta`** 含 **`capabilities.guardrails`**（与 eval HTTP 同源） |
 
 生产建议使用 **`--spring.profiles.active=prod`**，并设置 **`VAGENT_SECURITY_JWT_SECRET`**（长度与强度满足 **`application-prod.yml`** 要求）及各类密钥。
 

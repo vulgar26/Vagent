@@ -7,6 +7,7 @@ import com.vagent.chat.rag.RagProperties;
 import com.vagent.conversation.ConversationService;
 import com.vagent.eval.EvalApiProperties;
 import com.vagent.eval.EvalBehaviorMetaSync;
+import com.vagent.eval.EvalCapabilitiesObjects;
 import com.vagent.eval.EvalChatSafetyGate;
 import com.vagent.eval.EvalQuoteOnlyGuard;
 import com.vagent.kb.KnowledgeRetrieveService;
@@ -358,6 +359,7 @@ public class RagStreamChatService {
                                 messageService.saveAssistantMessage(
                                         conversationId, userId, assistantBuffer.toString()),
                         (emitter2, buf) -> {
+                            EvalCapabilitiesObjects.putGuardrailsCapabilitiesSlice(metaExtra, guardrailsProperties);
                             metaExtra.put("quote_only", true);
                             metaExtra.put("quote_only_strictness", qs);
                             metaExtra.put("quote_only_scope", qoScope);

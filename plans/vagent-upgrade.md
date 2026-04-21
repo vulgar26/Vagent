@@ -77,7 +77,7 @@
 - **P1-0b hybrid**：`KnowledgeRetrieveService` 内向量 + 词法 + RRF；**`RagRetrieveResult#putRetrievalTrace`** 输出 hybrid 与距离分桶等 **`meta`**；**第二路检索**（`SecondPath`）仍在；评测 **`meta`** 与检索归因对齐有单测 **`EvalChatControllerHybridMetaMockMvcTest`**。
 - **Rerank**：`RagProperties.Rerank` 与归因字段已有；**`KnowledgeRetrieveService`** 在 `rerank.enabled` 时仍走 **`rerank_outcome=skipped`**（**无**外部 rerank 供应商接入）。
 - **P0 最小 Reflection**：`EvalReflectionOneShotGuard`（引用闭环、低置信超长拒答）+ **`meta.reflection_outcome` / `meta.reflection_reasons`**（eval；SSE 在 reflection 开启且路径命中时写入）。
-- **Quote-only**：`EvalQuoteOnlyGuard`（**`strictness`** + **`scope`**）；eval 与可选 **SSE 全文缓冲**（**`GuardrailsProperties.QuoteOnly#applyToSseStream`** + **`LlmSseStreamingBridge`**）；语义 SSOT：**`plans/quote-only-guardrails.md`**。
+- **Quote-only**：`EvalQuoteOnlyGuard`（**`strictness`** + **`scope`**）；eval 与可选 **SSE 全文缓冲**（**`GuardrailsProperties.QuoteOnly#applyToSseStream`** + **`LlmSseStreamingBridge`**）；缓冲路径首条 **`meta`** 含 **`capabilities.guardrails`**（与 eval HTTP 同源，**`EvalCapabilitiesObjects`**）；语义 SSOT：**`plans/quote-only-guardrails.md`**。
 - **Eval 桩工具**：`EvalStubToolService`（caseId/关键词 → `stub_weather|stub_train|stub_search`）；**熔断** `EvalStubToolCircuitBreaker`；**桩结构化输出 JSON Schema**：`EvalStubToolPayloadValidator` + **`classpath:/eval/stub-schemas/*.schema.json`**，开关 **`vagent.eval.api.stub-tool-json-schema-validation-enabled`**。
 - **Eval `tool_policy=real`**：同步 **`McpClient#callTool`**，HTTP 超时由 **`vagent.mcp.tool-call-timeout`**（**`HttpMcpClient`**）决定，**不**使用 **`vagent.eval.api.stub-tool-timeout-ms`**。
 - **会话删除取消 SSE**：`ConversationController` → **`LlmStreamTaskRegistry#cancelAllForConversation`**。

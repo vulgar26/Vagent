@@ -33,6 +33,7 @@
 行为说明：
 
 - 与默认「边生成边 `chunk`」不同：启用后服务端 **缓冲 LLM 全文**，再发 **首条 `type=meta`**（含检索 trace 与门控结果）与 **一条 `type=chunk`**（全文或拒答替换文案），随后 **`done`**；便于在发出任何用户可见正文前完成 quote-only。
+- 该首条 **`meta`** 在 `quote_only` / `quote_only_scope` / `quote_only_strictness` 等之外，另含 **`meta.capabilities.guardrails`**（与评测 **`POST /api/v1/eval/chat`** 根级 **`capabilities.guardrails`** 同源：`quote_only`、`quote_only_scope`、`quote_only_scopes_supported`、`evidence_map`、`reflection`），由 **`EvalCapabilitiesObjects`** 构造；**`capabilities.retrieval` / `tools` / `streaming`** 仍以评测 HTTP 响应为准，SSE 此路径不伪造。
 - **不设**按请求头单独开关，仅由配置统一控制，避免客户端随意打开缓冲模式。
 
 ## 何时生效（仅评测 HTTP）

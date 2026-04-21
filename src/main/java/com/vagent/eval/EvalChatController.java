@@ -871,29 +871,13 @@ public class EvalChatController {
 
     private EvalChatResponse.Capabilities capabilitiesEffective(EvalChatRequest request) {
         boolean retrievalSupported = ragProperties != null && ragProperties.isEnabled();
-        boolean reflectionOn =
-                guardrailsProperties != null && guardrailsProperties.getReflection().isEnabled();
-        boolean quoteOnlyOn =
-                guardrailsProperties != null && guardrailsProperties.getQuoteOnly().isEnabled();
-        String quoteOnlyScopeCap = null;
-        List<String> quoteOnlyScopesSupported = null;
-        if (quoteOnlyOn && guardrailsProperties.getQuoteOnly() != null) {
-            String rawScope = guardrailsProperties.getQuoteOnly().getScope();
-            quoteOnlyScopeCap =
-                    rawScope != null && !rawScope.isBlank()
-                            ? rawScope.trim().toLowerCase(Locale.ROOT).replace('-', '_')
-                            : "digits_plus_tokens";
-            quoteOnlyScopesSupported = EvalQuoteOnlyGuard.supportedScopeConfigNames();
-        }
         boolean toolsSupported = toolsEffectiveSupported(request);
         Boolean toolSub = toolsSupported ? Boolean.TRUE : null;
         return new EvalChatResponse.Capabilities(
                 new EvalChatResponse.CapabilityFlag(retrievalSupported, false, null),
                 new EvalChatResponse.CapabilityFlag(toolsSupported, toolSub, toolSub),
                 new EvalChatResponse.StreamingFlag(false),
-                new EvalChatResponse.GuardrailsFlag(
-                        quoteOnlyOn, true, reflectionOn, quoteOnlyScopeCap, quoteOnlyScopesSupported)
-        );
+                EvalCapabilitiesObjects.guardrailsFromProperties(guardrailsProperties));
     }
 
     private boolean toolsEffectiveSupported(EvalChatRequest request) {
