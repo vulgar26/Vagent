@@ -34,6 +34,14 @@ public class McpProperties {
     /** U7：单次 tools/call 超时（主链路内使用）；不配置则沿用 requestTimeout。 */
     private Duration toolCallTimeout = Duration.ofSeconds(3);
 
+    /**
+     * D-3：工具调用失败（尤其是 schema 校验失败）时的对话策略。
+     * <p>
+     * - clarify：直接转澄清，不继续走 RAG/LLM（默认，安全/可控）
+     * - fallback：忽略工具，继续走 RAG/LLM（但 meta 仍会标注工具失败）
+     */
+    private String toolFailBehavior = "clarify";
+
     private Duration connectTimeout = Duration.ofSeconds(5);
 
     private Duration requestTimeout = Duration.ofSeconds(30);
@@ -100,6 +108,14 @@ public class McpProperties {
 
     public void setToolCallTimeout(Duration toolCallTimeout) {
         this.toolCallTimeout = toolCallTimeout;
+    }
+
+    public String getToolFailBehavior() {
+        return toolFailBehavior;
+    }
+
+    public void setToolFailBehavior(String toolFailBehavior) {
+        this.toolFailBehavior = toolFailBehavior;
     }
 }
 

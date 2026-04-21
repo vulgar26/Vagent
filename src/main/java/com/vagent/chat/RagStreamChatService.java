@@ -238,6 +238,40 @@ public class RagStreamChatService {
                 toolError = out.error();
                 toolErrorCode = out.toolErrorCode();
                 toolSchemaViolations = out.toolSchemaViolations();
+
+                // D-3：schema 校验失败可配置为直接澄清（不继续检索/LLM）
+                if (!toolUsed
+                        && toolErrorCode != null
+                        && (com.vagent.eval.EvalErrorCodes.TOOL_SCHEMA_INVALID.equals(toolErrorCode)
+                                || com.vagent.eval.EvalErrorCodes.TOOL_RESULT_SCHEMA_INVALID.equals(toolErrorCode))
+                        && shouldClarifyOnToolFailure()) {
+                    final String tn = toolMetaName;
+                    final String to = toolOutcome;
+                    final String te = toolError;
+                    final String tec = toolErrorCode;
+                    final List<String> tsv =
+                            toolSchemaViolations != null ? List.copyOf(toolSchemaViolations) : null;
+                    final String msg = buildToolFailureClarification(tn, tec);
+                    final Map<String, Object> metaExtra = new LinkedHashMap<>();
+                    EvalBehaviorMetaSync.applyRootToMeta(metaExtra, "clarify", tec);
+                    llmStreamExecutor.execute(
+                            () ->
+                                    runFixedAssistantStream(
+                                            emitter,
+                                            taskId,
+                                            conversationId,
+                                            userId,
+                                            msg,
+                                            ChatBranch.CLARIFICATION.name(),
+                                            0,
+                                            metaExtra,
+                                            tn,
+                                            to,
+                                            te,
+                                            tec,
+                                            tsv));
+                    return emitter;
+                }
             }
 
             retrieveTrace = knowledgeRetrieveService.searchForRag(userId, rewrite.retrievalQuery(), ragProperties);
@@ -651,6 +685,36 @@ public class RagStreamChatService {
             String branchName,
             int hitCount,
             Map<String, Object> metaExtra) {
+        runFixedAssistantStream(
+                emitter,
+                taskId,
+                conversationId,
+                userId,
+                fullText,
+                branchName,
+                hitCount,
+                metaExtra,
+                null,
+                null,
+                null,
+                null,
+                null);
+    }
+
+    private void runFixedAssistantStream(
+            SseEmitter emitter,
+            String taskId,
+            String conversationId,
+            UUID userId,
+            String fullText,
+            String branchName,
+            int hitCount,
+            Map<String, Object> metaExtra,
+            String toolName,
+            String toolOutcome,
+            String toolError,
+            String toolErrorCode,
+            List<String> toolSchemaViolations) {
         try {
             sendMeta(
                     emitter,
@@ -658,11 +722,11 @@ public class RagStreamChatService {
                     hitCount,
                     branchName,
                     false,
-                    null,
-                    null,
-                    null,
-                    null,
-                    null,
+                    toolName,
+                    toolOutcome,
+                    toolError,
+                    toolErrorCode,
+                    toolSchemaViolations,
                     null,
                     null,
                     null,
@@ -679,6 +743,30 @@ public class RagStreamChatService {
         } catch (Exception e) {
             emitter.completeWithError(e);
         }
+    }
+
+    private boolean shouldClarifyOnToolFailure() {
+        String raw = mcpProperties != null ? mcpProperties.getToolFailBehavior() : null;
+        if (raw == null || raw.isBlank()) {
+            return true;
+        }
+        String n = raw.trim().toLowerCase(Locale.ROOT);
+        return !"fallback".equals(n);
+    }
+
+    private static String buildToolFailureClarification(String toolName, String toolErrorCode) {
+        String tn = toolName != null ? toolName : "";
+        if (com.vagent.eval.EvalErrorCodes.TOOL_SCHEMA_INVALID.equals(toolErrorCode)) {
+            return tn.isBlank()
+                    ? "工具调用参数不符合要求，请补充必要参数后再试。"
+                    : "工具「" + tn + "」调用参数不符合要求，请补充必要参数后再试。";
+        }
+        if (com.vagent.eval.EvalErrorCodes.TOOL_RESULT_SCHEMA_INVALID.equals(toolErrorCode)) {
+            return tn.isBlank()
+                    ? "工具返回结果不符合约定，当前无法使用该工具输出；请稍后再试或改用不依赖工具的提问方式。"
+                    : "工具「" + tn + "」返回结果不符合约定，当前无法使用该工具输出；请稍后再试或改用不依赖工具的提问方式。";
+        }
+        return "工具调用失败，请稍后再试。";
     }
 
     private void sendMeta(

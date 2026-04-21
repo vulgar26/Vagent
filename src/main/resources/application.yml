@@ -147,6 +147,8 @@ vagent:
     protocol-version: 2025-03-26
     # tools/call 单次 HTTP 超时；SSE 主链路与 eval tool_policy=real 共用（见 HttpMcpClient）
     tool-call-timeout: 3s
+    # D-3：工具失败（尤其 schema 校验失败）后的对话策略：clarify | fallback
+    tool-fail-behavior: ${VAGENT_MCP_TOOL_FAIL_BEHAVIOR:clarify}
     # U7：主链路工具调用白名单（逗号分隔）。为空则主链路不允许任何工具（仍可用 /api/v1/mcp/* 联调）。
     allowed-tools: echo,ping
   llm:
