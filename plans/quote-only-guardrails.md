@@ -87,3 +87,4 @@
 
 - 变更 **`EvalQuoteOnlyGuard`**、评测门控顺序、或 **`EvidenceMapExtractor`** 等与 quote-only 共用逻辑后，应执行 **全量** `./mvnw test`（勿仅跑 `EvalQuoteOnlyGuardTest` 等子集），以免其它 Spring 集成测试回归未被发现。
 - 题集或流水线若 **固定依赖**某一 **`scope`** 语义，请在部署环境显式设置 **`VAGENT_GUARDRAILS_QUOTE_ONLY_SCOPE`**（或 `application.yml` 中的 `vagent.guardrails.quote-only.scope`），避免默认值与命题假设不一致。
+- **`full-answer-enabled`** + **`fake-stream`** 下与 `POST /api/v1/eval/chat` 对齐的 HTTP 回归：**`EvalChatControllerQuoteOnlyDigitsOnlyFullAnswerMockMvcTest`**（`scope=digits_only`）、**`EvalChatControllerQuoteOnlyPlusEvidenceFullAnswerMockMvcTest`**（`scope=digits_plus_tokens_plus_evidence` 通过 / 截断 snippet 失败）。
