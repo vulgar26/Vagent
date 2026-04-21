@@ -17,8 +17,6 @@ import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
-import java.nio.charset.StandardCharsets;
-import java.security.GeneralSecurityException;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -45,9 +43,6 @@ import com.vagent.eval.stub.EvalStubToolService;
 import com.vagent.mcp.client.McpClient;
 import com.vagent.mcp.config.McpProperties;
 import com.vagent.mcp.tools.McpToolArgumentSchemaValidator;
-
-import javax.crypto.Mac;
-import javax.crypto.spec.SecretKeySpec;
 
 import static org.springframework.http.HttpStatus.NOT_FOUND;
 
@@ -83,7 +78,7 @@ import static org.springframework.http.HttpStatus.NOT_FOUND;
 public class EvalChatController {
 
     /** Day5：hashed membership 候选集上限（强制 N≤50）。 */
-    private static final int RETRIEVAL_CANDIDATE_LIMIT_N = 50;
+    private static final int RETRIEVAL_CANDIDATE_LIMIT_N = RetrievalMembershipHasher.ENGINE_MEMBERSHIP_CAP;
 
     private final EvalApiProperties evalApiProperties;
     private final EvalDebugNetworkPolicy debugNetworkPolicy;
@@ -251,7 +246,12 @@ public class EvalChatController {
         // key 派生材料来自 X-Eval-Token + (targetId,datasetId,caseId)，与 eval 侧对齐
         meta.put(
                 "retrieval_hit_id_hashes",
-                buildRetrievalHitIdHashes(xEvalToken, xEvalTargetId, xEvalDatasetId, xEvalCaseId, candidates));
+                RetrievalMembershipHasher.buildEvalHitIdHashes(
+                        xEvalToken,
+                        xEvalTargetId,
+                        xEvalDatasetId,
+                        xEvalCaseId,
+                        canonicalIdsFromHits(candidates)));
 
         String answer = "OK";
         String behavior = "answer";
@@ -813,7 +813,7 @@ public class EvalChatController {
         }
         List<String> ids =
                 hits.stream()
-                        .map(EvalChatController::canonicalHitId)
+                        .map(RetrievalMembershipHasher::canonicalHitId)
                         .filter(id -> id != null && !id.isBlank())
                         .toList();
         meta.put("retrieval_hit_ids", ids);
@@ -828,55 +828,14 @@ public class EvalChatController {
         }
     }
 
-    private static List<String> buildRetrievalHitIdHashes(
-            String xEvalToken,
-            String xEvalTargetId,
-            String xEvalDatasetId,
-            String xEvalCaseId,
-            List<RetrieveHit> candidates) {
+    private static List<String> canonicalIdsFromHits(List<RetrieveHit> candidates) {
         if (candidates == null || candidates.isEmpty()) {
             return List.of();
         }
-        String token = xEvalToken != null ? xEvalToken.trim() : "";
-        if (token.isEmpty()) {
-            return List.of();
-        }
-        String targetId = xEvalTargetId != null ? xEvalTargetId.trim() : "";
-        String datasetId = xEvalDatasetId != null ? xEvalDatasetId.trim() : "";
-        String caseId = xEvalCaseId != null ? xEvalCaseId.trim() : "";
-
-        byte[] kCase = hmacSha256(token.getBytes(StandardCharsets.UTF_8),
-                ("hitid-key/v1|" + targetId + "|" + datasetId + "|" + caseId).getBytes(StandardCharsets.UTF_8));
-
         return candidates.stream()
-                .map(EvalChatController::canonicalHitId)
+                .map(RetrievalMembershipHasher::canonicalHitId)
                 .filter(id -> id != null && !id.isBlank())
-                .map(id -> toHexLower(hmacSha256(kCase, id.getBytes(StandardCharsets.UTF_8))))
                 .toList();
-    }
-
-    private static byte[] hmacSha256(byte[] key, byte[] msg) {
-        try {
-            Mac mac = Mac.getInstance("HmacSHA256");
-            mac.init(new SecretKeySpec(key, "HmacSHA256"));
-            return mac.doFinal(msg);
-        } catch (GeneralSecurityException e) {
-            throw new IllegalStateException("HmacSHA256 not available", e);
-        }
-    }
-
-    private static String toHexLower(byte[] bytes) {
-        if (bytes == null || bytes.length == 0) {
-            return "";
-        }
-        char[] hex = new char[bytes.length * 2];
-        final char[] alphabet = "0123456789abcdef".toCharArray();
-        for (int i = 0; i < bytes.length; i++) {
-            int v = bytes[i] & 0xFF;
-            hex[i * 2] = alphabet[v >>> 4];
-            hex[i * 2 + 1] = alphabet[v & 0x0F];
-        }
-        return new String(hex);
     }
 
     private EvalChatResponse.Capabilities capabilitiesEffective(EvalChatRequest request) {
@@ -921,7 +880,7 @@ public class EvalChatController {
             return Set.of();
         }
         return candidates.stream()
-                .map(EvalChatController::canonicalHitId)
+                .map(RetrievalMembershipHasher::canonicalHitId)
                 .filter(id -> id != null && !id.isBlank())
                 .collect(Collectors.toUnmodifiableSet());
     }
@@ -932,7 +891,7 @@ public class EvalChatController {
         }
         return hits.stream()
                 .map(h -> new EvalChatResponse.Source(
-                        canonicalHitId(h),
+                        RetrievalMembershipHasher.canonicalHitId(h),
                         canonicalTitle(h),
                         truncateSnippet(h != null ? h.getContent() : null)))
                 .toList();
@@ -943,20 +902,8 @@ public class EvalChatController {
             return List.of();
         }
         return hits.stream()
-                .map(h -> new EvalChatResponse.RetrievalHit(canonicalHitId(h), h.getDistance()))
+                .map(h -> new EvalChatResponse.RetrievalHit(RetrievalMembershipHasher.canonicalHitId(h), h.getDistance()))
                 .toList();
-    }
-
-    private static String canonicalHitId(RetrieveHit h) {
-        if (h == null) {
-            return "";
-        }
-        String cid = h.getChunkId() != null ? h.getChunkId().trim() : "";
-        if (!cid.isEmpty()) {
-            return cid;
-        }
-        String doc = h.getDocumentId() != null ? h.getDocumentId().trim() : "";
-        return !doc.isEmpty() ? doc : "";
     }
 
     private static String canonicalTitle(RetrieveHit h) {

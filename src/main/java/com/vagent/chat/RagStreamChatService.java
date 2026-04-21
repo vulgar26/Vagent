@@ -10,6 +10,7 @@ import com.vagent.eval.EvalBehaviorMetaSync;
 import com.vagent.eval.EvalCapabilitiesObjects;
 import com.vagent.eval.EvalChatSafetyGate;
 import com.vagent.eval.EvalQuoteOnlyGuard;
+import com.vagent.eval.RetrievalMembershipHasher;
 import com.vagent.kb.KnowledgeRetrieveService;
 import com.vagent.kb.RagRetrieveResult;
 import com.vagent.kb.dto.RetrieveHit;
@@ -70,6 +71,9 @@ import static org.springframework.http.HttpStatus.NOT_FOUND;
  * <p><b>SSE 首帧 {@code meta} 与评测根级对齐（P1-0 收口）：</b>首条 {@code type=meta} 均经 {@link com.vagent.eval.EvalBehaviorMetaSync#applyRootToMeta}
  * 写入 {@code behavior}/{@code error_code}，与 {@link com.vagent.eval.dto.EvalChatResponse} 根级字段<strong>同值</strong>；成功走主链路 LLM 时为
  * {@code behavior=answer} 且不写 {@code error_code}（等同根级无归因码）。安全短路、检索后门控短路、意图澄清分支同理。</p>
+ *
+ * <p>RAG 且携带 {@link RagRetrieveResult} 时，首帧另写入 {@code canonical_hit_id_scheme}、{@code retrieval_candidate_*}、
+ * {@code retrieval_hit_id_hashes}（与评测字段名一致；SSE 哈希密钥见 {@code vagent.rag.sse-membership-hmac-secret}）。</p>
  *
  * <p>可选：{@code vagent.guardrails.quote-only.enabled=true} 且 {@code apply-to-sse-stream=true} 时，RAG 有命中则先缓冲 LLM 全文，
  * 再经 {@link EvalQuoteOnlyGuard} 与 eval 同源写 {@code meta} 后一次性 {@code chunk}（见 {@code plans/quote-only-guardrails.md}）。</p>
@@ -335,6 +339,8 @@ public class RagStreamChatService {
                         toolErrorCode,
                         toolSchemaViolations,
                         retrieveTrace,
+                        userId,
+                        conversationId,
                         metaExtra);
             }
 
@@ -400,6 +406,8 @@ public class RagStreamChatService {
                                     toolErrorCode,
                                     toolSchemaViolations,
                                     retrieveTrace,
+                                    userId,
+                                    conversationId,
                                     metaExtra);
                             sendEvent(emitter2, Map.of("type", "chunk", "text", buf.toString()));
                         });
@@ -490,6 +498,8 @@ public class RagStreamChatService {
                     null,
                     null,
                     retrieveTrace,
+                    userId,
+                    conversationId,
                     metaExtra);
             if (taskRegistry.isCancelled(taskId)) {
                 sendEvent(emitter, Map.of("type", "cancelled"));
@@ -512,6 +522,49 @@ public class RagStreamChatService {
      *
      * @param hitCount meta 中的 hitCount（澄清与空命中为 0）
      */
+    /**
+     * SSE 首帧：在 hybrid/距离等 {@link RagRetrieveResult#putRetrievalTrace} 之后补齐
+     * {@code canonical_hit_id_scheme}、{@code retrieval_candidate_*}、{@code retrieval_hit_id_hashes}（哈希需配置
+     * {@code vagent.rag.sse-membership-hmac-secret}，与评测 E7 密钥材料不同源）。
+     */
+    private void attachSseRetrievalMembershipSlice(
+            Map<String, Object> meta,
+            RagRetrieveResult retrieveTrace,
+            String taskId,
+            UUID sseMembershipUserId,
+            String sseMembershipConversationId) {
+        List<RetrieveHit> rh = retrieveTrace.hits();
+        int candidateTotal = rh == null ? 0 : rh.size();
+        meta.put("canonical_hit_id_scheme", "kb_chunk_id");
+        meta.put("retrieval_candidate_total", candidateTotal);
+        if (candidateTotal == 0) {
+            meta.put("retrieval_candidate_limit_n", 0);
+            meta.put("retrieval_hit_id_hashes", List.of());
+            return;
+        }
+        int cap =
+                Math.max(
+                        1,
+                        Math.min(
+                                evalApiProperties.getMembershipTopN(),
+                                RetrievalMembershipHasher.ENGINE_MEMBERSHIP_CAP));
+        int limitN = Math.min(cap, candidateTotal);
+        List<RetrieveHit> candidates = rh.subList(0, limitN);
+        meta.put("retrieval_candidate_limit_n", limitN);
+        List<String> ids = new ArrayList<>();
+        for (RetrieveHit h : candidates) {
+            String id = RetrievalMembershipHasher.canonicalHitId(h);
+            if (id != null && !id.isBlank()) {
+                ids.add(id);
+            }
+        }
+        String secret = ragProperties.getSseMembershipHmacSecret();
+        meta.put(
+                "retrieval_hit_id_hashes",
+                RetrievalMembershipHasher.buildSseHitIdHashes(
+                        secret, sseMembershipUserId, sseMembershipConversationId, taskId, ids));
+    }
+
     private void runFixedAssistantStream(
             SseEmitter emitter,
             String taskId,
@@ -528,6 +581,8 @@ public class RagStreamChatService {
                     hitCount,
                     branchName,
                     false,
+                    null,
+                    null,
                     null,
                     null,
                     null,
@@ -561,6 +616,8 @@ public class RagStreamChatService {
             String toolErrorCode,
             List<String> toolSchemaViolations,
             RagRetrieveResult retrieveTrace,
+            UUID sseMembershipUserId,
+            String sseMembershipConversationId,
             Map<String, Object> additionalMeta)
             throws IOException {
         Map<String, Object> meta = new LinkedHashMap<>();
@@ -571,6 +628,8 @@ public class RagStreamChatService {
         meta.put("branch", branch);
         if (retrieveTrace != null) {
             retrieveTrace.putRetrievalTrace(meta);
+            attachSseRetrievalMembershipSlice(
+                    meta, retrieveTrace, taskId, sseMembershipUserId, sseMembershipConversationId);
         }
         meta.put("toolUsed", toolUsed);
         boolean toolAttribution =

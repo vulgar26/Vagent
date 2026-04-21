@@ -8,7 +8,7 @@
 
 - **认证与会话**：注册 / 登录签发 JWT；会话 CRUD；删除会话时取消该会话下进行中的流式任务。
 - **知识库**：文档分块、嵌入写入、按用户隔离的向量检索；`POST /api/v1/kb/documents` 入库，`POST /api/v1/kb/retrieve` 仅检索。
-- **对话与 RAG**：多轮 `messages` 持久化；流式入口拼历史、检索片段与系统提示后调用 **`LlmClient`**；SSE 首包 **`meta`** 含 **`taskId`**、**`branch`**（如 RAG / 寒暄 / 澄清）、**`hitCount`** 等。
+- **对话与 RAG**：多轮 `messages` 持久化；流式入口拼历史、检索片段与系统提示后调用 **`LlmClient`**；SSE 首包 **`meta`** 含 **`taskId`**、**`branch`**（如 RAG / 寒暄 / 澄清）、**`hitCount`** 等；RAG 有检索 trace 时另有 **`canonical_hit_id_scheme`**、**`retrieval_candidate_*`**、**`retrieval_hit_id_hashes`**（哈希需 **`vagent.rag.sse-membership-hmac-secret`**，与评测 **E7** 的 token 材料不同源，见 **`plans/vagent-upgrade.md`** 缺口 **A**）。
 - **编排**：检索前 **query 改写**（如透传、拼接历史用户句）；**规则意图**（过短澄清、前缀寒暄不经检索、正常走 RAG）。
 - **空检索**：**`vagent.rag.empty-hits-behavior`** 控制检索 0 条时是否仍调用大模型（`no-llm` 则固定文案结束）。
 - **第二路检索（可选）**：在满足配置时合并**全表**向量召回（默认关闭，避免跨租户误用）。

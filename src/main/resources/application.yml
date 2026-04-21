@@ -128,6 +128,8 @@ vagent:
       timeout-ms: 800
       max-candidates: 20
       allow-external: false
+    # 可选：用户 RAG SSE 首帧 meta.retrieval_hit_id_hashes（k_case 与评测 X-Eval-Token 不同源）；不设则列表为 []
+    sse-membership-hmac-secret: ${VAGENT_RAG_SSE_MEMBERSHIP_HMAC_SECRET:}
     # P1-0：检索后低置信门控（SSE + Eval 共用）；优先于 vagent.eval.api 下同义键（后者为兼容回退）
     gate:
       # low-confidence-cosine-distance-threshold: 0.45

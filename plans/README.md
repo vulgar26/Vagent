@@ -6,7 +6,7 @@
 
 | 文档 | 内容 |
 |------|------|
-| [`vagent-upgrade.md`](vagent-upgrade.md) | 本仓库 RAG 编排、门控、评测接口、引用闭环与后续路线（**主施工说明**） |
+| [`vagent-upgrade.md`](vagent-upgrade.md) | 本仓库 RAG 编排、门控、评测接口、引用闭环与后续路线（**主施工说明**）；文首 **缺口 backlog A–H** + **A 分步** |
 | [`eval-upgrade.md`](eval-upgrade.md) | 统一评测服务（dataset / run / report / compare）契约与联调说明 |
 | [`travel-ai-upgrade.md`](travel-ai-upgrade.md) | 另一套 target（travel-ai）与评测对齐的专项目录 |
 

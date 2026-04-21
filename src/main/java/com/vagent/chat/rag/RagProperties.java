@@ -64,6 +64,12 @@ public class RagProperties {
     /** P1-0b：融合后可选重排；默认关闭（未接入供应商时显式 skipped）。 */
     private Rerank rerank = new Rerank();
 
+    /**
+     * 可选 UTF-8 密钥：用户侧 RAG SSE 首帧 {@code meta.retrieval_hit_id_hashes} 的 k_case 材料（与评测 {@code X-Eval-Token} 派生<strong>不同源</strong>）。
+     * 留空时仍写入 {@code canonical_hit_id_scheme}、{@code retrieval_candidate_*} 与空列表 {@code []}。
+     */
+    private String sseMembershipHmacSecret = "";
+
     public boolean isEnabled() {
         return enabled;
     }
@@ -126,6 +132,14 @@ public class RagProperties {
 
     public void setRerank(Rerank rerank) {
         this.rerank = rerank != null ? rerank : new Rerank();
+    }
+
+    public String getSseMembershipHmacSecret() {
+        return sseMembershipHmacSecret == null ? "" : sseMembershipHmacSecret;
+    }
+
+    public void setSseMembershipHmacSecret(String sseMembershipHmacSecret) {
+        this.sseMembershipHmacSecret = sseMembershipHmacSecret != null ? sseMembershipHmacSecret : "";
     }
 
     /**
