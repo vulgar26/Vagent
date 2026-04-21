@@ -210,6 +210,7 @@ public class EvalChatController {
             meta.put("retrieve_hit_count", 0);
             meta.put("low_confidence", false);
             meta.put("low_confidence_reasons", List.of());
+            meta.put("low_confidence_gate", "none");
             meta.put("disabled_reason", "RETRIEVAL_DISABLED");
             EvalBehaviorMetaSync.applyRootToMeta(meta, "deny", "POLICY_DISABLED");
             enforceRetrievalHitIdBoundary(meta, mode, httpRequest);
@@ -277,10 +278,12 @@ public class EvalChatController {
             lowConfidence = sc.lowConfidence();
             meta.put("low_confidence", sc.lowConfidence());
             meta.put("low_confidence_reasons", sc.lowConfidenceReasons());
+            meta.put("low_confidence_gate", "post_retrieve_gate");
         } else {
             lowConfidence = false;
             meta.put("low_confidence", false);
             meta.put("low_confidence_reasons", List.of());
+            meta.put("low_confidence_gate", "none");
         }
 
         if (evalApiProperties.isFullAnswerEnabled()
@@ -415,6 +418,7 @@ public class EvalChatController {
         meta.put("retrieve_hit_count", 0);
         meta.put("low_confidence", false);
         meta.put("low_confidence_reasons", List.of());
+        meta.put("low_confidence_gate", "none");
         meta.put("canonical_hit_id_scheme", "kb_chunk_id");
         meta.put("retrieval_candidate_limit_n", 0);
         meta.put("retrieval_candidate_total", 0);
@@ -452,6 +456,7 @@ public class EvalChatController {
         meta.put("retrieve_hit_count", 0);
         meta.put("low_confidence", false);
         meta.put("low_confidence_reasons", List.of());
+        meta.put("low_confidence_gate", "none");
         meta.put("canonical_hit_id_scheme", "kb_chunk_id");
         meta.put("retrieval_candidate_limit_n", 0);
         meta.put("retrieval_candidate_total", 0);
@@ -494,6 +499,7 @@ public class EvalChatController {
         meta.put("retrieve_hit_count", 0);
         meta.put("low_confidence", false);
         meta.put("low_confidence_reasons", List.of());
+        meta.put("low_confidence_gate", "none");
         meta.put("canonical_hit_id_scheme", "kb_chunk_id");
         meta.put("retrieval_candidate_limit_n", 0);
         meta.put("retrieval_candidate_total", 0);
@@ -553,6 +559,7 @@ public class EvalChatController {
         meta.put("retrieve_hit_count", 0);
         meta.put("low_confidence", false);
         meta.put("low_confidence_reasons", List.of());
+        meta.put("low_confidence_gate", "none");
         meta.put("canonical_hit_id_scheme", "kb_chunk_id");
         meta.put("retrieval_candidate_limit_n", 0);
         meta.put("retrieval_candidate_total", 0);
@@ -768,9 +775,11 @@ public class EvalChatController {
         if ("deny".equals(outcome.behavior())) {
             meta.put("low_confidence", false);
             meta.put("low_confidence_reasons", List.of());
+            meta.put("low_confidence_gate", "pre_retrieval_safety");
         } else {
             meta.put("low_confidence", true);
             meta.put("low_confidence_reasons", List.of("SAFETY_QUERY_GATE"));
+            meta.put("low_confidence_gate", "pre_retrieval_safety");
         }
     }
 

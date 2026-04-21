@@ -272,7 +272,7 @@ Vagent 的“企业风格”定位下，评测接口与日志/审计必须具备
 - dataset 中标记为 `rag/low_conf`、`rag/empty` 的 case：
   - `behavior` 与 `expected_behavior` 一致
 - `meta.low_confidence=true`
-- `error_code` 必须为 `RETRIEVE_EMPTY|RETRIEVE_LOW_CONFIDENCE`（且 `meta.low_confidence_reasons[]` 至少包含 1 个原因）
+- `error_code` 必须为 `RETRIEVE_EMPTY|RETRIEVE_LOW_CONFIDENCE`；若 `meta.low_confidence_reasons[]` 含 `SAFETY_QUERY_GATE`（检索前安全门），则允许 `error_code=GUARDRAIL_TRIGGERED`，并以 `meta.low_confidence_gate=pre_retrieval_safety` 作归因兜底
 
 ### 一次性 Reflection（evidence-check）验收
 

@@ -320,6 +320,7 @@ public class RagStreamChatService {
             } else if (hitCount > 0 && retrieveTrace != null) {
                 metaExtra.put("low_confidence", false);
                 metaExtra.put("low_confidence_reasons", List.of());
+                metaExtra.put("low_confidence_gate", "none");
             }
             boolean sseBufferedQuoteOnly =
                     guardrailsProperties != null
@@ -476,9 +477,11 @@ public class RagStreamChatService {
         if ("deny".equals(outcome.behavior())) {
             meta.put("low_confidence", false);
             meta.put("low_confidence_reasons", List.of());
+            meta.put("low_confidence_gate", "pre_retrieval_safety");
         } else {
             meta.put("low_confidence", true);
             meta.put("low_confidence_reasons", List.of("SAFETY_QUERY_GATE"));
+            meta.put("low_confidence_gate", "pre_retrieval_safety");
         }
     }
 
@@ -494,6 +497,7 @@ public class RagStreamChatService {
             Map<String, Object> metaExtra = new LinkedHashMap<>();
             metaExtra.put("low_confidence", gate.lowConfidence());
             metaExtra.put("low_confidence_reasons", gate.lowConfidenceReasons());
+            metaExtra.put("low_confidence_gate", "post_retrieve_gate");
             EvalBehaviorMetaSync.applyRootToMeta(metaExtra, gate.behavior(), gate.errorCode());
             sendMeta(
                     emitter,

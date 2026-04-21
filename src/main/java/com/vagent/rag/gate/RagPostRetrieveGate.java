@@ -112,6 +112,7 @@ public final class RagPostRetrieveGate {
         meta.put("retrieve_hit_count", 0);
         meta.put("low_confidence", true);
         meta.put("low_confidence_reasons", List.of("EMPTY_HITS"));
+        meta.put("low_confidence_gate", "empty_hits_allow_llm");
     }
 
     private static boolean isDistanceLowConfidence(List<RetrieveHit> orderedHits, Double threshold) {

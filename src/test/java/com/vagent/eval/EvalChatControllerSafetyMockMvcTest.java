@@ -89,7 +89,8 @@ class EvalChatControllerSafetyMockMvcTest {
                 .andExpect(jsonPath("$.meta.error_code").value("GUARDRAIL_TRIGGERED"))
                 .andExpect(jsonPath("$.meta.eval_safety_rule_id").value("TOOL_DISABLED_REALTIME_QUERY"))
                 .andExpect(jsonPath("$.meta.low_confidence").value(true))
-                .andExpect(jsonPath("$.meta.low_confidence_reasons[0]").value("SAFETY_QUERY_GATE"));
+                .andExpect(jsonPath("$.meta.low_confidence_reasons[0]").value("SAFETY_QUERY_GATE"))
+                .andExpect(jsonPath("$.meta.low_confidence_gate").value("pre_retrieval_safety"));
     }
 
     @Test
