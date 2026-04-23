@@ -20,7 +20,7 @@ import java.util.concurrent.ConcurrentHashMap;
 /**
  * 主链路 / eval real 工具在 {@code McpClient#callTool} <strong>之后</strong>对返回结果做 JSON Schema（Draft 2020-12）校验。
  * <p>
- * Schema 资源位于 {@code classpath:/mcp/tool-result-schemas/&lt;toolNameLower&gt;.schema.json}；未注册 schema 的工具跳过校验。
+ * Schema 资源位于 {@code classpath:/mcp/tool-result-schemas/&lt;schemaKey&gt;.schema.json}（键来自 {@link ToolRegistry}）；未登记的工具跳过校验。
  */
 @Component
 public final class McpToolResultSchemaValidator {

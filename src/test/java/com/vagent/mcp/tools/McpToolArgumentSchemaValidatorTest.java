@@ -1,6 +1,7 @@
 package com.vagent.mcp.tools;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.vagent.mcp.config.McpProperties;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -14,7 +15,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class McpToolArgumentSchemaValidatorTest {
 
     private final McpToolArgumentSchemaValidator validator =
-            new McpToolArgumentSchemaValidator(new ObjectMapper(), new ToolRegistry());
+            new McpToolArgumentSchemaValidator(new ObjectMapper(), new ToolRegistry(new McpProperties()));
 
     @Test
     void echoEmptyMessageFailsSchema() {

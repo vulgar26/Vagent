@@ -3,6 +3,8 @@ package com.vagent.mcp.config;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * U6：MCP（Model Context Protocol）Client 配置。
@@ -48,6 +50,14 @@ public class McpProperties {
 
     /** D-6：主链路 MCP 调用配额（进程内固定窗口；多实例需各算各的）。 */
     private Quota quota = new Quota();
+
+    /**
+     * D-7：在 {@code echo}/{@code ping} 之外登记 {@link com.vagent.mcp.tools.ToolRegistry} 条目（版本、schema 键、指纹）。
+     * <p>
+     * Schema 文件须已存在于 classpath：{@code /mcp/tool-arg-schemas/&lt;argSchemaKey&gt;.schema.json} 与
+     * {@code /mcp/tool-result-schemas/&lt;resultSchemaKey&gt;.schema.json}；与 {@code vagent.mcp.allowed-tools} 白名单独立配置。
+     */
+    private List<RegisteredTool> registryTools = new ArrayList<>();
 
     public boolean isEnabled() {
         return enabled;
@@ -127,6 +137,74 @@ public class McpProperties {
 
     public void setQuota(Quota quota) {
         this.quota = quota != null ? quota : new Quota();
+    }
+
+    public List<RegisteredTool> getRegistryTools() {
+        return registryTools;
+    }
+
+    public void setRegistryTools(List<RegisteredTool> registryTools) {
+        this.registryTools = registryTools != null ? registryTools : new ArrayList<>();
+    }
+
+    public static final class RegisteredTool {
+        /** 工具名（trim 后转小写登记）；不可为空。 */
+        private String name = "";
+
+        private String version = "1.0.0";
+
+        /**
+         * 入参 schema 资源键；空则默认与 {@link #name} 的小写一致。
+         */
+        private String argSchemaKey = "";
+
+        /**
+         * 出参 schema 资源键；空则默认与 {@link #name} 的小写一致。
+         */
+        private String resultSchemaKey = "";
+
+        /** 是否强制做 MCP 返回值的 JSON Schema 校验（与内置工具一致）。 */
+        private boolean resultSchemaRequired = true;
+
+        public String getName() {
+            return name;
+        }
+
+        public void setName(String name) {
+            this.name = name != null ? name : "";
+        }
+
+        public String getVersion() {
+            return version;
+        }
+
+        public void setVersion(String version) {
+            this.version = version != null ? version : "";
+        }
+
+        public String getArgSchemaKey() {
+            return argSchemaKey;
+        }
+
+        public void setArgSchemaKey(String argSchemaKey) {
+            this.argSchemaKey = argSchemaKey != null ? argSchemaKey : "";
+        }
+
+        public String getResultSchemaKey() {
+            return resultSchemaKey;
+        }
+
+        public void setResultSchemaKey(String resultSchemaKey) {
+            this.resultSchemaKey = resultSchemaKey != null ? resultSchemaKey : "";
+        }
+
+        public boolean isResultSchemaRequired() {
+            return resultSchemaRequired;
+        }
+
+        public void setResultSchemaRequired(boolean resultSchemaRequired) {
+            this.resultSchemaRequired = resultSchemaRequired;
+        }
     }
 
     public static final class Quota {

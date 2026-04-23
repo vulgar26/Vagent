@@ -151,6 +151,13 @@ vagent:
     tool-fail-behavior: ${VAGENT_MCP_TOOL_FAIL_BEHAVIOR:clarify}
     # U7：主链路工具调用白名单（逗号分隔）。为空则主链路不允许任何工具（仍可用 /api/v1/mcp/* 联调）。
     allowed-tools: echo,ping
+    # D-7：在 echo/ping 外追加 ToolRegistry（须已有 /mcp/tool-arg-schemas/<key>.schema.json 与 tool-result-schemas）
+    registry-tools: []
+    #  - name: my_tool
+    #    version: 1.0.0
+    #    arg-schema-key: my_tool
+    #    result-schema-key: my_tool
+    #    result-schema-required: true
     # D-6：MCP callTool 前进程内配额（固定窗口；多实例各算各的）。默认关闭；在入参 schema 通过后扣减。
     quota:
       enabled: false

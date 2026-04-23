@@ -1,5 +1,8 @@
 package com.vagent.mcp.tools;
 
+import com.vagent.mcp.config.McpProperties;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 import java.io.ByteArrayOutputStream;
@@ -8,17 +11,21 @@ import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 
 /**
- * 工具治理 SSOT（最小可用）：集中管理“工具是否存在、schema key、版本”等元信息。
+ * 工具治理 SSOT：集中管理「工具 schema 键、版本、指纹」等元信息。
  * <p>
- * D-1 先只覆盖 echo/ping；后续扩展为完整 ToolRegistry（版本/resultSchema/跨实例配额等）。
+ * 内置 {@code echo}/{@code ping}；可通过 {@code vagent.mcp.registry-tools} 追加登记（D-7），须已有对应 classpath JSON Schema。
  */
 @Component
 public final class ToolRegistry {
+
+    private static final Logger log = LoggerFactory.getLogger(ToolRegistry.class);
 
     /**
      * 最小信息（D-2 版）：
@@ -33,24 +40,78 @@ public final class ToolRegistry {
             boolean resultSchemaRequired,
             String toolSchemaHash) {}
 
-    private final Map<String, ToolSpec> byNameLower =
-            Map.of(
-                    "echo",
-                            new ToolSpec(
-                                    "echo",
-                                    "1.0.0",
-                                    "echo",
-                                    "echo",
-                                    true,
-                                    buildToolSchemaHash("echo", "echo")),
-                    "ping",
-                            new ToolSpec(
-                                    "ping",
-                                    "1.0.0",
-                                    "ping",
-                                    "ping",
-                                    true,
-                                    buildToolSchemaHash("ping", "ping")));
+    private final Map<String, ToolSpec> byNameLower;
+
+    public ToolRegistry(McpProperties mcpProperties) {
+        Map<String, ToolSpec> map = new LinkedHashMap<>();
+        putBuiltin(map, "echo", "1.0.0", "echo", "echo", true);
+        putBuiltin(map, "ping", "1.0.0", "ping", "ping", true);
+        if (mcpProperties != null) {
+            List<McpProperties.RegisteredTool> extras = mcpProperties.getRegistryTools();
+            if (extras != null) {
+                for (McpProperties.RegisteredTool rt : extras) {
+                    registerConfigured(map, rt);
+                }
+            }
+        }
+        this.byNameLower = Map.copyOf(map);
+    }
+
+    private static void putBuiltin(
+            Map<String, ToolSpec> map,
+            String nameLower,
+            String version,
+            String argSchemaKey,
+            String resultSchemaKey,
+            boolean resultSchemaRequired) {
+        map.put(
+                nameLower,
+                new ToolSpec(
+                        nameLower,
+                        version,
+                        argSchemaKey,
+                        resultSchemaKey,
+                        resultSchemaRequired,
+                        buildToolSchemaHash(argSchemaKey, resultSchemaKey)));
+    }
+
+    private static void registerConfigured(Map<String, ToolSpec> map, McpProperties.RegisteredTool rt) {
+        String n = normalize(rt.getName());
+        if (n == null) {
+            log.warn("Skipping vagent.mcp.registry-tools entry with blank name");
+            return;
+        }
+        if (map.containsKey(n)) {
+            log.warn(
+                    "Skipping vagent.mcp.registry-tools entry for '{}': name already registered (built-in or earlier entry wins)",
+                    n);
+            return;
+        }
+        String version =
+                rt.getVersion() != null && !rt.getVersion().isBlank() ? rt.getVersion().trim() : "1.0.0";
+        String argKey =
+                rt.getArgSchemaKey() != null && !rt.getArgSchemaKey().isBlank()
+                        ? rt.getArgSchemaKey().trim()
+                        : n;
+        String resKey =
+                rt.getResultSchemaKey() != null && !rt.getResultSchemaKey().isBlank()
+                        ? rt.getResultSchemaKey().trim()
+                        : n;
+        try {
+            String hash = buildToolSchemaHash(argKey, resKey);
+            map.put(n, new ToolSpec(n, version, argKey, resKey, rt.isResultSchemaRequired(), hash));
+        } catch (RuntimeException e) {
+            throw new IllegalStateException(
+                    "Invalid vagent.mcp.registry-tools entry for tool '"
+                            + n
+                            + "': cannot load arg/result schema resources for argSchemaKey='"
+                            + argKey
+                            + "', resultSchemaKey='"
+                            + resKey
+                            + "'",
+                    e);
+        }
+    }
 
     public Optional<ToolSpec> find(String toolName) {
         String k = normalize(toolName);
@@ -136,4 +197,3 @@ public final class ToolRegistry {
         return n.toLowerCase(Locale.ROOT);
     }
 }
-
