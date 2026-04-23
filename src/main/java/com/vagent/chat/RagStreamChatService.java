@@ -28,6 +28,8 @@ import com.vagent.rag.gate.RagPostRetrieveGate;
 import com.vagent.rag.gate.RagPostRetrieveGateSettings;
 import com.vagent.guardrails.GuardrailsProperties;
 import com.vagent.user.UserIdFormats;
+import com.vagent.mcp.audit.McpToolInvocationAudit;
+import com.vagent.mcp.audit.McpToolInvocationAuditService;
 import com.vagent.mcp.client.McpClient;
 import com.vagent.mcp.config.McpProperties;
 import com.vagent.mcp.tools.McpToolArgumentSchemaValidator;
@@ -105,6 +107,7 @@ public class RagStreamChatService {
     private final McpToolArgumentSchemaValidator mcpToolArgumentSchemaValidator;
     private final McpToolResultSchemaValidator mcpToolResultSchemaValidator;
     private final ToolRegistry toolRegistry;
+    private final McpToolInvocationAuditService mcpToolInvocationAuditService;
     private final EvalApiProperties evalApiProperties;
     private final RagPostRetrieveGateSettings ragPostRetrieveGateSettings;
     private final GuardrailsProperties guardrailsProperties;
@@ -125,6 +128,7 @@ public class RagStreamChatService {
             McpToolArgumentSchemaValidator mcpToolArgumentSchemaValidator,
             McpToolResultSchemaValidator mcpToolResultSchemaValidator,
             ToolRegistry toolRegistry,
+            McpToolInvocationAuditService mcpToolInvocationAuditService,
             EvalApiProperties evalApiProperties,
             RagPostRetrieveGateSettings ragPostRetrieveGateSettings,
             GuardrailsProperties guardrailsProperties,
@@ -144,6 +148,7 @@ public class RagStreamChatService {
         this.mcpToolArgumentSchemaValidator = mcpToolArgumentSchemaValidator;
         this.mcpToolResultSchemaValidator = mcpToolResultSchemaValidator;
         this.toolRegistry = toolRegistry;
+        this.mcpToolInvocationAuditService = mcpToolInvocationAuditService;
         this.evalApiProperties = evalApiProperties;
         this.ragPostRetrieveGateSettings = ragPostRetrieveGateSettings;
         this.guardrailsProperties = guardrailsProperties;
@@ -238,6 +243,8 @@ public class RagStreamChatService {
                 toolError = out.error();
                 toolErrorCode = out.toolErrorCode();
                 toolSchemaViolations = out.toolSchemaViolations();
+
+                maybeAuditSseToolInvocation(userId, conversationId, taskId, toolMetaName, out);
 
                 // D-3：schema 校验失败可配置为直接澄清（不继续检索/LLM）
                 if (!toolUsed
@@ -911,20 +918,74 @@ public class RagStreamChatService {
             Map<String, Object> args = sanitizeToolArguments(toolName, toolArgs, userMessage);
             Optional<List<String>> schemaViolations = mcpToolArgumentSchemaValidator.validate(toolName, args);
             if (schemaViolations.isPresent()) {
-                return ToolContextOutcome.schemaInvalid(schemaViolations.get());
+                return ToolContextOutcome.schemaInvalid(schemaViolations.get(), 0L);
             }
-            Map<String, Object> result = client.callTool(toolName, args);
+            long callStartNs = System.nanoTime();
+            Map<String, Object> result;
+            try {
+                result = client.callTool(toolName, args);
+            } catch (Exception e) {
+                long callLatencyMs = (System.nanoTime() - callStartNs) / 1_000_000L;
+                log.warn("mcp tool call failed: tool={}", toolName, e);
+                String msg = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
+                String outcome = isLikelyTimeout(e) ? "timeout" : "error";
+                return ToolContextOutcome.failed(outcome, msg, callLatencyMs);
+            }
+            long callLatencyMs = (System.nanoTime() - callStartNs) / 1_000_000L;
             Optional<List<String>> resultViolations = mcpToolResultSchemaValidator.validate(toolName, result);
             if (resultViolations.isPresent()) {
-                return ToolContextOutcome.resultSchemaInvalid(resultViolations.get());
+                return ToolContextOutcome.resultSchemaInvalid(resultViolations.get(), callLatencyMs);
             }
-            return ToolContextOutcome.used(buildToolContextPrompt(toolName, result));
+            return ToolContextOutcome.used(buildToolContextPrompt(toolName, result), callLatencyMs);
         } catch (Exception e) {
             log.warn("mcp tool call failed: tool={}", toolName, e);
             String msg = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
             String outcome = isLikelyTimeout(e) ? "timeout" : "error";
-            return ToolContextOutcome.failed(outcome, msg);
+            return ToolContextOutcome.failed(outcome, msg, 0L);
         }
+    }
+
+    private void maybeAuditSseToolInvocation(
+            UUID userId, String conversationId, String taskId, String toolName, ToolContextOutcome out) {
+        if (mcpToolInvocationAuditService == null
+                || toolName == null
+                || toolName.isBlank()
+                || out == null) {
+            return;
+        }
+        McpToolInvocationAudit row = new McpToolInvocationAudit();
+        row.setChannel("sse");
+        row.setUserId(userId);
+        if (conversationId != null && !conversationId.isBlank()) {
+            try {
+                row.setConversationId(UUID.fromString(conversationId.trim()));
+            } catch (IllegalArgumentException ignored) {
+                row.setConversationId(null);
+            }
+        }
+        row.setCorrelationId(taskId);
+        row.setToolName(toolName.trim());
+        if (toolRegistry != null) {
+            toolRegistry.toolVersion(toolName).ifPresent(row::setToolVersion);
+            toolRegistry.toolSchemaHash(toolName).ifPresent(row::setToolSchemaHash);
+        }
+        String oc = out.outcome();
+        if (oc == null || oc.isBlank()) {
+            oc = out.toolErrorCode() == null ? "skipped" : "error";
+        }
+        row.setOutcome(oc);
+        row.setErrorCode(out.toolErrorCode());
+        row.setLatencyMs(out.latencyMs());
+        if (toolRegistry != null && toolRegistry.argSchemaKey(toolName).isPresent()) {
+            row.setArgSchemaValidated(!com.vagent.eval.EvalErrorCodes.TOOL_SCHEMA_INVALID.equals(out.toolErrorCode()));
+        }
+        if (toolRegistry != null && toolRegistry.resultSchemaKey(toolName).isPresent()) {
+            row.setResultSchemaValidated(
+                    out.used()
+                            && !com.vagent.eval.EvalErrorCodes.TOOL_RESULT_SCHEMA_INVALID.equals(
+                                    out.toolErrorCode()));
+        }
+        mcpToolInvocationAuditService.record(row);
     }
 
     private static boolean isLikelyTimeout(Throwable e) {
@@ -948,20 +1009,22 @@ public class RagStreamChatService {
             String outcome,
             String error,
             String toolErrorCode,
-            List<String> toolSchemaViolations) {
+            List<String> toolSchemaViolations,
+            long latencyMs) {
         static ToolContextOutcome skipped() {
-            return new ToolContextOutcome(false, null, null, null, null, null);
+            return new ToolContextOutcome(false, null, null, null, null, null, 0L);
         }
 
-        static ToolContextOutcome used(String contextText) {
-            return new ToolContextOutcome(true, contextText, "success", null, null, null);
+        static ToolContextOutcome used(String contextText, long latencyMs) {
+            return new ToolContextOutcome(true, contextText, "success", null, null, null, latencyMs);
         }
 
-        static ToolContextOutcome failed(String outcome, String error) {
-            return new ToolContextOutcome(false, null, outcome, error, null, null);
+        static ToolContextOutcome failed(String outcome, String error, Long callLatencyMs) {
+            return new ToolContextOutcome(
+                    false, null, outcome, error, null, null, callLatencyMs != null ? callLatencyMs : 0L);
         }
 
-        static ToolContextOutcome schemaInvalid(List<String> violations) {
+        static ToolContextOutcome schemaInvalid(List<String> violations, long latencyMs) {
             String summary =
                     violations.isEmpty()
                             ? com.vagent.eval.EvalErrorCodes.TOOL_SCHEMA_INVALID
@@ -974,10 +1037,11 @@ public class RagStreamChatService {
                     "error",
                     summary,
                     com.vagent.eval.EvalErrorCodes.TOOL_SCHEMA_INVALID,
-                    List.copyOf(violations));
+                    List.copyOf(violations),
+                    latencyMs);
         }
 
-        static ToolContextOutcome resultSchemaInvalid(List<String> violations) {
+        static ToolContextOutcome resultSchemaInvalid(List<String> violations, long latencyMs) {
             String summary =
                     violations.isEmpty()
                             ? com.vagent.eval.EvalErrorCodes.TOOL_RESULT_SCHEMA_INVALID
@@ -990,7 +1054,8 @@ public class RagStreamChatService {
                     "error",
                     summary,
                     com.vagent.eval.EvalErrorCodes.TOOL_RESULT_SCHEMA_INVALID,
-                    List.copyOf(violations));
+                    List.copyOf(violations),
+                    latencyMs);
         }
     }
 

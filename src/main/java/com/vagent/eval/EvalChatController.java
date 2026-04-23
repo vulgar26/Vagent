@@ -40,6 +40,8 @@ import com.vagent.rag.RagKnowledgeSystemPrompts;
 import com.vagent.rag.gate.RagPostRetrieveGate;
 import com.vagent.rag.gate.RagPostRetrieveGateSettings;
 import com.vagent.eval.stub.EvalStubToolService;
+import com.vagent.mcp.audit.McpToolInvocationAudit;
+import com.vagent.mcp.audit.McpToolInvocationAuditService;
 import com.vagent.mcp.client.McpClient;
 import com.vagent.mcp.config.McpProperties;
 import com.vagent.mcp.tools.McpToolArgumentSchemaValidator;
@@ -97,6 +99,7 @@ public class EvalChatController {
     private final McpToolArgumentSchemaValidator mcpToolArgumentSchemaValidator;
     private final McpToolResultSchemaValidator mcpToolResultSchemaValidator;
     private final ToolRegistry toolRegistry;
+    private final McpToolInvocationAuditService mcpToolInvocationAuditService;
 
     public EvalChatController(
             EvalApiProperties evalApiProperties,
@@ -112,7 +115,8 @@ public class EvalChatController {
             ObjectProvider<McpClient> mcpClientProvider,
             McpToolArgumentSchemaValidator mcpToolArgumentSchemaValidator,
             McpToolResultSchemaValidator mcpToolResultSchemaValidator,
-            ToolRegistry toolRegistry) {
+            ToolRegistry toolRegistry,
+            McpToolInvocationAuditService mcpToolInvocationAuditService) {
         this.evalApiProperties = evalApiProperties;
         this.debugNetworkPolicy = debugNetworkPolicy;
         this.guardrailsProperties = guardrailsProperties;
@@ -128,6 +132,7 @@ public class EvalChatController {
         this.mcpToolArgumentSchemaValidator = mcpToolArgumentSchemaValidator;
         this.mcpToolResultSchemaValidator = mcpToolResultSchemaValidator;
         this.toolRegistry = toolRegistry;
+        this.mcpToolInvocationAuditService = mcpToolInvocationAuditService;
     }
 
     @PostMapping("/chat")
@@ -204,7 +209,8 @@ public class EvalChatController {
             return respondStubToolEval(request, meta, mode, httpRequest, xEvalCaseId, startNs, q);
         }
         if (isRealToolEvalRequest(request)) {
-            return respondRealToolEval(request, meta, mode, httpRequest, startNs, q);
+            return respondRealToolEval(
+                    request, meta, mode, httpRequest, startNs, q, xEvalCaseId, xEvalRunId, xEvalTargetId);
         }
         if (isToolExpectedWithoutStubEvalExecution(request)) {
             return respondToolExpectedNonStubEval(request, meta, mode, httpRequest, startNs);
@@ -590,7 +596,10 @@ public class EvalChatController {
             String mode,
             HttpServletRequest httpRequest,
             long startNs,
-            String q) {
+            String q,
+            String xEvalCaseId,
+            String xEvalRunId,
+            String xEvalTargetId) {
         meta.put(EvalMetaKeys.RETRIEVE_HIT_COUNT, 0);
         meta.put(EvalMetaKeys.LOW_CONFIDENCE, false);
         meta.put(EvalMetaKeys.LOW_CONFIDENCE_REASONS, List.of());
@@ -626,6 +635,16 @@ public class EvalChatController {
             String msg = "工具「" + toolName + "」不在 vagent.mcp.allowed-tools 白名单中。";
             EvalBehaviorMetaSync.applyRootToMeta(meta, "clarify", null);
             enforceRetrievalHitIdBoundary(meta, mode, httpRequest);
+            recordEvalToolAudit(
+                    toolName,
+                    "skipped",
+                    null,
+                    0L,
+                    null,
+                    null,
+                    xEvalCaseId,
+                    xEvalRunId,
+                    xEvalTargetId);
             long latencyMs = (System.nanoTime() - startNs) / 1_000_000L;
             EvalChatResponse.Tool toolBlock = new EvalChatResponse.Tool(true, false, false, toolName, "skipped", 0L);
             return new EvalChatResponse(
@@ -663,6 +682,16 @@ public class EvalChatController {
             }
             EvalBehaviorMetaSync.applyRootToMeta(meta, "tool", EvalErrorCodes.TOOL_SCHEMA_INVALID);
             enforceRetrievalHitIdBoundary(meta, mode, httpRequest);
+            recordEvalToolAudit(
+                    toolName,
+                    "error",
+                    EvalErrorCodes.TOOL_SCHEMA_INVALID,
+                    0L,
+                    false,
+                    false,
+                    xEvalCaseId,
+                    xEvalRunId,
+                    xEvalTargetId);
             long latencyMs = (System.nanoTime() - startNs) / 1_000_000L;
             EvalChatResponse.Tool toolBlock =
                     new EvalChatResponse.Tool(true, false, false, toolName, "error", 0L);
@@ -734,6 +763,26 @@ public class EvalChatController {
 
         EvalBehaviorMetaSync.applyRootToMeta(meta, behavior, errorCode);
         enforceRetrievalHitIdBoundary(meta, mode, httpRequest);
+        Boolean argOk =
+                toolRegistry != null && toolRegistry.argSchemaKey(toolName).isPresent()
+                        ? Boolean.TRUE
+                        : null;
+        Boolean resultOk =
+                toolRegistry != null && toolRegistry.resultSchemaKey(toolName).isPresent()
+                        ? Boolean.valueOf(
+                                succeeded
+                                        && !EvalErrorCodes.TOOL_RESULT_SCHEMA_INVALID.equals(errorCode))
+                        : null;
+        recordEvalToolAudit(
+                toolName,
+                outcome,
+                errorCode,
+                latencyMsTool,
+                argOk,
+                resultOk,
+                xEvalCaseId,
+                xEvalRunId,
+                xEvalTargetId);
         long latencyMs = (System.nanoTime() - startNs) / 1_000_000L;
         return new EvalChatResponse(
                 answer,
@@ -746,6 +795,47 @@ public class EvalChatController {
                 errorCode,
                 toolBlock,
                 null);
+    }
+
+    private void recordEvalToolAudit(
+            String toolName,
+            String outcome,
+            String errorCode,
+            long mcpLatencyMs,
+            Boolean argSchemaValidated,
+            Boolean resultSchemaValidated,
+            String xEvalCaseId,
+            String xEvalRunId,
+            String xEvalTargetId) {
+        if (mcpToolInvocationAuditService == null || toolName == null || toolName.isBlank()) {
+            return;
+        }
+        McpToolInvocationAudit row = new McpToolInvocationAudit();
+        row.setChannel("eval");
+        row.setUserId(EvalStableUserId.fromEvalTargetId(xEvalTargetId));
+        row.setConversationId(null);
+        row.setCorrelationId(evalCorrelationId(xEvalCaseId, xEvalRunId));
+        row.setToolName(toolName.trim());
+        if (toolRegistry != null) {
+            toolRegistry.toolVersion(toolName).ifPresent(row::setToolVersion);
+            toolRegistry.toolSchemaHash(toolName).ifPresent(row::setToolSchemaHash);
+        }
+        row.setOutcome(outcome);
+        row.setErrorCode(errorCode);
+        row.setLatencyMs(mcpLatencyMs);
+        row.setArgSchemaValidated(argSchemaValidated);
+        row.setResultSchemaValidated(resultSchemaValidated);
+        mcpToolInvocationAuditService.record(row);
+    }
+
+    private static String evalCorrelationId(String caseId, String runId) {
+        String a = caseId != null ? caseId.trim() : "";
+        String b = runId != null ? runId.trim() : "";
+        if (a.isEmpty() && b.isEmpty()) {
+            return null;
+        }
+        String s = a.isEmpty() ? b : (b.isEmpty() ? a : (a + "|" + b));
+        return s.length() > 128 ? s.substring(0, 128) : s;
     }
 
     private static Map<String, Object> resolveRealToolArguments(
