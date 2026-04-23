@@ -24,5 +24,7 @@ public final class EvalErrorCodes {
     public static final String TOOL_ERROR = "TOOL_ERROR";
     public static final String TOOL_SCHEMA_INVALID = "TOOL_SCHEMA_INVALID";
     public static final String TOOL_RESULT_SCHEMA_INVALID = "TOOL_RESULT_SCHEMA_INVALID";
+    /** MCP 主链路：固定窗口内超过配置的每用户/每会话调用上限（见 {@code vagent.mcp.quota}）。 */
+    public static final String TOOL_RATE_LIMITED = "TOOL_RATE_LIMITED";
 }
 

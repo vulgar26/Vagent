@@ -43,6 +43,7 @@ import com.vagent.eval.stub.EvalStubToolService;
 import com.vagent.mcp.audit.McpToolInvocationAudit;
 import com.vagent.mcp.audit.McpToolInvocationAuditService;
 import com.vagent.mcp.client.McpClient;
+import com.vagent.mcp.quota.McpToolInvocationQuotaLimiter;
 import com.vagent.mcp.config.McpProperties;
 import com.vagent.mcp.tools.McpToolArgumentSchemaValidator;
 import com.vagent.mcp.tools.McpToolResultSchemaValidator;
@@ -100,6 +101,7 @@ public class EvalChatController {
     private final McpToolResultSchemaValidator mcpToolResultSchemaValidator;
     private final ToolRegistry toolRegistry;
     private final McpToolInvocationAuditService mcpToolInvocationAuditService;
+    private final McpToolInvocationQuotaLimiter mcpToolInvocationQuotaLimiter;
 
     public EvalChatController(
             EvalApiProperties evalApiProperties,
@@ -116,7 +118,8 @@ public class EvalChatController {
             McpToolArgumentSchemaValidator mcpToolArgumentSchemaValidator,
             McpToolResultSchemaValidator mcpToolResultSchemaValidator,
             ToolRegistry toolRegistry,
-            McpToolInvocationAuditService mcpToolInvocationAuditService) {
+            McpToolInvocationAuditService mcpToolInvocationAuditService,
+            McpToolInvocationQuotaLimiter mcpToolInvocationQuotaLimiter) {
         this.evalApiProperties = evalApiProperties;
         this.debugNetworkPolicy = debugNetworkPolicy;
         this.guardrailsProperties = guardrailsProperties;
@@ -133,6 +136,7 @@ public class EvalChatController {
         this.mcpToolResultSchemaValidator = mcpToolResultSchemaValidator;
         this.toolRegistry = toolRegistry;
         this.mcpToolInvocationAuditService = mcpToolInvocationAuditService;
+        this.mcpToolInvocationQuotaLimiter = mcpToolInvocationQuotaLimiter;
     }
 
     @PostMapping("/chat")
@@ -709,6 +713,39 @@ public class EvalChatController {
         }
         if (toolRegistry != null && toolRegistry.argSchemaKey(toolName).isPresent()) {
             meta.put(EvalMetaKeys.TOOL_ARG_SCHEMA_VALIDATED, true);
+        }
+        UUID quotaUserId = EvalStableUserId.fromEvalTargetId(xEvalTargetId);
+        if (!mcpToolInvocationQuotaLimiter.tryAcquire(quotaUserId, null, toolName)) {
+            meta.put(EvalMetaKeys.TOOL_ERROR_CODE, EvalErrorCodes.TOOL_RATE_LIMITED);
+            if (toolRegistry != null && toolRegistry.resultSchemaKey(toolName).isPresent()) {
+                meta.put(EvalMetaKeys.TOOL_RESULT_SCHEMA_VALIDATED, false);
+            }
+            EvalBehaviorMetaSync.applyRootToMeta(meta, "tool", EvalErrorCodes.TOOL_RATE_LIMITED);
+            enforceRetrievalHitIdBoundary(meta, mode, httpRequest);
+            recordEvalToolAudit(
+                    toolName,
+                    "error",
+                    EvalErrorCodes.TOOL_RATE_LIMITED,
+                    0L,
+                    Boolean.TRUE,
+                    Boolean.FALSE,
+                    xEvalCaseId,
+                    xEvalRunId,
+                    xEvalTargetId);
+            long latencyMs = (System.nanoTime() - startNs) / 1_000_000L;
+            EvalChatResponse.Tool toolBlock =
+                    new EvalChatResponse.Tool(true, true, false, toolName, "error", 0L);
+            return new EvalChatResponse(
+                    "MCP 工具调用频率已超过限额，请稍后再试。",
+                    "tool",
+                    latencyMs,
+                    capabilitiesEffective(request),
+                    meta,
+                    List.of(),
+                    List.of(),
+                    EvalErrorCodes.TOOL_RATE_LIMITED,
+                    toolBlock,
+                    null);
         }
         long t0 = System.nanoTime();
         String outcome = "success";

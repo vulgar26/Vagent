@@ -46,6 +46,9 @@ public class McpProperties {
 
     private Duration requestTimeout = Duration.ofSeconds(30);
 
+    /** D-6：主链路 MCP 调用配额（进程内固定窗口；多实例需各算各的）。 */
+    private Quota quota = new Quota();
+
     public boolean isEnabled() {
         return enabled;
     }
@@ -116,6 +119,69 @@ public class McpProperties {
 
     public void setToolFailBehavior(String toolFailBehavior) {
         this.toolFailBehavior = toolFailBehavior;
+    }
+
+    public Quota getQuota() {
+        return quota;
+    }
+
+    public void setQuota(Quota quota) {
+        this.quota = quota != null ? quota : new Quota();
+    }
+
+    public static final class Quota {
+        /**
+         * 是否启用配额；启用后须至少配置一项正数上限（用户维度和/或会话维度），否则等价于不限制。
+         */
+        private boolean enabled = false;
+
+        /** 统计窗口长度。 */
+        private Duration window = Duration.ofMinutes(1);
+
+        /**
+         * 每用户每工具在窗口内最多几次实际 {@code callTool}（通过入参 schema 后计数）。
+         * {@code <=0} 表示不限制该维度。
+         */
+        private int maxInvocationsPerUserPerToolPerWindow = 60;
+
+        /**
+         * 每会话每工具在窗口内最多几次；{@code <=0} 表示不限制该维度。
+         * <p>
+         * 评测 real 路径无会话 id，仅用户维度生效。
+         */
+        private int maxInvocationsPerConversationPerToolPerWindow = 0;
+
+        public boolean isEnabled() {
+            return enabled;
+        }
+
+        public void setEnabled(boolean enabled) {
+            this.enabled = enabled;
+        }
+
+        public Duration getWindow() {
+            return window;
+        }
+
+        public void setWindow(Duration window) {
+            this.window = window != null && !window.isNegative() && !window.isZero() ? window : Duration.ofMinutes(1);
+        }
+
+        public int getMaxInvocationsPerUserPerToolPerWindow() {
+            return maxInvocationsPerUserPerToolPerWindow;
+        }
+
+        public void setMaxInvocationsPerUserPerToolPerWindow(int maxInvocationsPerUserPerToolPerWindow) {
+            this.maxInvocationsPerUserPerToolPerWindow = maxInvocationsPerUserPerToolPerWindow;
+        }
+
+        public int getMaxInvocationsPerConversationPerToolPerWindow() {
+            return maxInvocationsPerConversationPerToolPerWindow;
+        }
+
+        public void setMaxInvocationsPerConversationPerToolPerWindow(int maxInvocationsPerConversationPerToolPerWindow) {
+            this.maxInvocationsPerConversationPerToolPerWindow = maxInvocationsPerConversationPerToolPerWindow;
+        }
     }
 }
 

@@ -15,7 +15,7 @@ import java.util.Optional;
 /**
  * 工具治理 SSOT（最小可用）：集中管理“工具是否存在、schema key、版本”等元信息。
  * <p>
- * D-1 先只覆盖 echo/ping；后续 D1–D4 扩展为完整 ToolRegistry（版本/resultSchema/审计/配额）。
+ * D-1 先只覆盖 echo/ping；后续扩展为完整 ToolRegistry（版本/resultSchema/跨实例配额等）。
  */
 @Component
 public final class ToolRegistry {

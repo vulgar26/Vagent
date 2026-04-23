@@ -32,6 +32,7 @@ import com.vagent.mcp.audit.McpToolInvocationAudit;
 import com.vagent.mcp.audit.McpToolInvocationAuditService;
 import com.vagent.mcp.client.McpClient;
 import com.vagent.mcp.config.McpProperties;
+import com.vagent.mcp.quota.McpToolInvocationQuotaLimiter;
 import com.vagent.mcp.tools.McpToolArgumentSchemaValidator;
 import com.vagent.mcp.tools.McpToolResultSchemaValidator;
 import com.vagent.mcp.tools.ToolRegistry;
@@ -108,6 +109,7 @@ public class RagStreamChatService {
     private final McpToolResultSchemaValidator mcpToolResultSchemaValidator;
     private final ToolRegistry toolRegistry;
     private final McpToolInvocationAuditService mcpToolInvocationAuditService;
+    private final McpToolInvocationQuotaLimiter mcpToolInvocationQuotaLimiter;
     private final EvalApiProperties evalApiProperties;
     private final RagPostRetrieveGateSettings ragPostRetrieveGateSettings;
     private final GuardrailsProperties guardrailsProperties;
@@ -129,6 +131,7 @@ public class RagStreamChatService {
             McpToolResultSchemaValidator mcpToolResultSchemaValidator,
             ToolRegistry toolRegistry,
             McpToolInvocationAuditService mcpToolInvocationAuditService,
+            McpToolInvocationQuotaLimiter mcpToolInvocationQuotaLimiter,
             EvalApiProperties evalApiProperties,
             RagPostRetrieveGateSettings ragPostRetrieveGateSettings,
             GuardrailsProperties guardrailsProperties,
@@ -149,6 +152,7 @@ public class RagStreamChatService {
         this.mcpToolResultSchemaValidator = mcpToolResultSchemaValidator;
         this.toolRegistry = toolRegistry;
         this.mcpToolInvocationAuditService = mcpToolInvocationAuditService;
+        this.mcpToolInvocationQuotaLimiter = mcpToolInvocationQuotaLimiter;
         this.evalApiProperties = evalApiProperties;
         this.ragPostRetrieveGateSettings = ragPostRetrieveGateSettings;
         this.guardrailsProperties = guardrailsProperties;
@@ -236,7 +240,8 @@ public class RagStreamChatService {
             String toolContextText = null;
             if (branch == ChatBranch.RAG && intent != null && intent.toolIntent()) {
                 toolMetaName = intent.optionalToolName().orElse(orchestrationProperties.getToolIntentDefaultToolName());
-                ToolContextOutcome out = tryCallToolForContext(toolMetaName, intent.safeToolArguments(), userMessage);
+                ToolContextOutcome out =
+                        tryCallToolForContext(userId, conversationId, toolMetaName, intent.safeToolArguments(), userMessage);
                 toolContextText = out.contextText();
                 toolUsed = out.used();
                 toolOutcome = out.outcome();
@@ -250,7 +255,8 @@ public class RagStreamChatService {
                 if (!toolUsed
                         && toolErrorCode != null
                         && (com.vagent.eval.EvalErrorCodes.TOOL_SCHEMA_INVALID.equals(toolErrorCode)
-                                || com.vagent.eval.EvalErrorCodes.TOOL_RESULT_SCHEMA_INVALID.equals(toolErrorCode))
+                                || com.vagent.eval.EvalErrorCodes.TOOL_RESULT_SCHEMA_INVALID.equals(toolErrorCode)
+                                || com.vagent.eval.EvalErrorCodes.TOOL_RATE_LIMITED.equals(toolErrorCode))
                         && shouldClarifyOnToolFailure()) {
                     final String tn = toolMetaName;
                     final String to = toolOutcome;
@@ -773,6 +779,11 @@ public class RagStreamChatService {
                     ? "工具返回结果不符合约定，当前无法使用该工具输出；请稍后再试或改用不依赖工具的提问方式。"
                     : "工具「" + tn + "」返回结果不符合约定，当前无法使用该工具输出；请稍后再试或改用不依赖工具的提问方式。";
         }
+        if (com.vagent.eval.EvalErrorCodes.TOOL_RATE_LIMITED.equals(toolErrorCode)) {
+            return tn.isBlank()
+                    ? "工具调用过于频繁，请稍后再试。"
+                    : "工具「" + tn + "」调用过于频繁，请稍后再试。";
+        }
         return "工具调用失败，请稍后再试。";
     }
 
@@ -899,7 +910,8 @@ public class RagStreamChatService {
                 + base;
     }
 
-    private ToolContextOutcome tryCallToolForContext(String toolName, Map<String, Object> toolArgs, String userMessage) {
+    private ToolContextOutcome tryCallToolForContext(
+            UUID userId, String conversationId, String toolName, Map<String, Object> toolArgs, String userMessage) {
         if (toolName == null || toolName.isBlank()) {
             return ToolContextOutcome.skipped();
         }
@@ -919,6 +931,17 @@ public class RagStreamChatService {
             Optional<List<String>> schemaViolations = mcpToolArgumentSchemaValidator.validate(toolName, args);
             if (schemaViolations.isPresent()) {
                 return ToolContextOutcome.schemaInvalid(schemaViolations.get(), 0L);
+            }
+            UUID convUuid = null;
+            if (conversationId != null && !conversationId.isBlank()) {
+                try {
+                    convUuid = UUID.fromString(conversationId.trim());
+                } catch (IllegalArgumentException ignored) {
+                    convUuid = null;
+                }
+            }
+            if (!mcpToolInvocationQuotaLimiter.tryAcquire(userId, convUuid, toolName)) {
+                return ToolContextOutcome.rateLimited();
             }
             long callStartNs = System.nanoTime();
             Map<String, Object> result;
@@ -1056,6 +1079,17 @@ public class RagStreamChatService {
                     com.vagent.eval.EvalErrorCodes.TOOL_RESULT_SCHEMA_INVALID,
                     List.copyOf(violations),
                     latencyMs);
+        }
+
+        static ToolContextOutcome rateLimited() {
+            return new ToolContextOutcome(
+                    false,
+                    null,
+                    "error",
+                    "TOOL_RATE_LIMITED",
+                    com.vagent.eval.EvalErrorCodes.TOOL_RATE_LIMITED,
+                    null,
+                    0L);
         }
     }
 

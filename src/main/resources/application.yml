@@ -151,6 +151,13 @@ vagent:
     tool-fail-behavior: ${VAGENT_MCP_TOOL_FAIL_BEHAVIOR:clarify}
     # U7：主链路工具调用白名单（逗号分隔）。为空则主链路不允许任何工具（仍可用 /api/v1/mcp/* 联调）。
     allowed-tools: echo,ping
+    # D-6：MCP callTool 前进程内配额（固定窗口；多实例各算各的）。默认关闭；在入参 schema 通过后扣减。
+    quota:
+      enabled: false
+      window: 1m
+      max-invocations-per-user-per-tool-per-window: 60
+      # 0 = 不按会话限制；SSE 有 conversationId 时可设正数
+      max-invocations-per-conversation-per-tool-per-window: 0
   llm:
     # noop | fake-stream | dashscope（通义千问兼容模式，需密钥）
     provider: noop
