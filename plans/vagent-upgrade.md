@@ -13,7 +13,7 @@
 | **A** | SSE 与评测 **meta** 对等 | 用户侧 SSE 首帧曾缺 **`retrieval_hit_id_hashes`** / **`canonical_hit_id_scheme`** / **`retrieval_candidate_*`** 与评测对齐 | **A-1**：membership 形状 + 可选哈希（**`sse-membership-hmac-secret`**，非 **E7** token）。**A-2**：**`chat_stream_channel`**、**`retrieval_membership_top_n` / `hashes_enabled` / `hashes_count`**；RAG 有命中且走 LLM 时补 **`low_confidence=false`**。 |
 | **B** | 门控与 **error_code** | `rag/low_conf` 与 **`SAFETY_QUERY_GATE`** 归因并存；全路径 **error_code/低置信枚举 SSOT（常量类）**、**`vagent.rag.low-confidence-*` 配置绑定**仍可选 | 报表口径与配置见「已知缺口」 |
 | **C** | Hybrid / rerank | **外部 rerank 供应商**未接入（`rerank_outcome=skipped`） | A/B compare 流程见 **P1-0b** |
-| **D** | 工具治理 **P1-4** | 按工具细粒度超时、分布式配额等仍可加强 | **内置 echo/ping** + **`vagent.mcp.registry-tools`（D-7）**、**审计（D-5）**、**配额（D-6）** 已落地 |
+| **D** | 工具治理 **P1-4** | 分布式配额等仍可加强 | **内置 echo/ping** + **`registry-tools`（D-7）**、**`tool-call-timeouts`（D-8）**、**审计（D-5）**、**配额（D-6）** 已落地 |
 | **E** | Reflection **P0-2 续** | **toolConflictPolicy**、数值冲突白名单等未实现 | 规则型 `reflection_*` 已有 |
 | **F** | Evidence **P1-5** | **enum** 等 claim 类型与文档 §P1-5 个别段落需与代码对齐 | numeric/date 已落地 |
 | **G** | 运维 / CI | **`eval-remote`** 依赖 Secrets、可达服务、schedule | 见 `plans/ci-eval-github-actions.md` |
@@ -80,7 +80,7 @@
 
 1. **P1-0（后续）**：SSE `meta` 与评测根级 `behavior`/`error_code` 已由 **`EvalBehaviorMetaSync`** 对齐（成功路径 `behavior=answer` 且无根级 `error_code`）；**`rag/low_conf`×`SAFETY_QUERY_GATE`** 的报表口径仍见上表。**安全门 `clarify`** 根级 **`error_code=GUARDRAIL_TRIGGERED`** 已与检索后门控 **`RETRIEVE_*`** 区分。**门控距离/子串**已迁至 **`vagent.rag.gate.*`**（`RagPostRetrieveGateSettings`）；`vagent.eval.api.low-confidence-*` 仍绑定，作**兼容回退**。
 2. **P1-0b**：在已通过 P0 的前提下，用 **同一 `dataset_id`** 做 hybrid / rerank 开关的 **A/B compare**（见本文 **P1-0b**）；默认仍保守，以 compare 无契约类回退为门禁。代码侧 **hybrid 融合与 meta 归因已具备**；**供应商 rerank 仍为 skipped 占位**（见下节）。**`compare-eval-runs.ps1`** 已支持 **`EVAL_HTTP_TOKEN`** / **`-EvalHttpToken`**；GitHub **`hybrid-ab-compare`** workflow 可手动跑门禁（见 **`scripts/README-hybrid-rerank-ab.md`** §5）。
-3. **P1-4（续）**：eval **桩**侧已可跑 **`p0_v0_tool_*`**，并具备 **桩输出 JSON Schema**、**熔断/超时**；**`tool_policy=real`** 与 **`HttpMcpClient`** 共用 **`vagent.mcp.tool-call-timeout`**。主链路 **`ToolRegistry`（内置 + `registry-tools`）**、**审计表**、**进程内配额** 已落地；**跨实例统一配额**、**按工具细粒度超时/运营台账** 等仍属缺口（见下节）。
+3. **P1-4（续）**：eval **桩**侧已可跑 **`p0_v0_tool_*`**，并具备 **桩输出 JSON Schema**、**熔断/超时**；**`tool_policy=real`** 与 **`HttpMcpClient`** 共用全局 **`vagent.mcp.tool-call-timeout`**，且可按工具覆盖（**D-8**）。主链路 **`ToolRegistry`（内置 + `registry-tools`）**、**审计表**、**进程内配额** 已落地；**跨实例统一配额**、**运营台账** 等仍属缺口（见下节）。
 4. **P0-2 Reflection（续）**：**`meta.reflection_outcome` / `meta.reflection_reasons`** 已在 **规则型一次性门控**（`EvalReflectionOneShotGuard`）+ eval/SSE 写入路径落地；文档后段的 **toolConflictPolicy / 数值冲突白名单** 等 **未**实现。
 5. **P0+ / 运维（续）**：本仓 **`.github/workflows/eval-remote.yml`** + **`scripts/ci-eval-remote.sh`** 已具备失败退出码、报告落盘与 artifact；**Secrets、可达 eval 服务、是否启用 schedule** 仍依赖部署与运营配置（亦见 `plans/ci-eval-github-actions.md`）。
 
@@ -107,7 +107,7 @@
 
 - **`evidenceMap[]`（P1-5）**：已实现服务端规则提取（目前覆盖 **numeric/date**；numeric 为「千分位 / 小数 / 连续位数≥2」优先级 span，避免四位整数被误切）并在 `requires_citations=true && behavior=answer` 时返回 `evidence_map[]`；`capabilities.guardrails.evidence_map=true`。
 - **SSE 正常 RAG 命中**：首帧 **`chat_stream_channel=sse`**；在 **`retrieveTrace != null`** 时写入 **`canonical_hit_id_scheme`**、**`retrieval_candidate_total`**、**`retrieval_candidate_limit_n`**、**`retrieval_hit_id_hashes[]`**、**`retrieval_membership_*`**（见上 A-2）；SSE 哈希 k_case **非** `X-Eval-Token`。未配置 **`sse-membership-hmac-secret`** 时哈希列表为 **`[]`**。安全短路仍走 **`applySafetyShortCircuitMeta`** 占位，并写 **`retrieval_membership_top_n`** 等对齐键。
-- **P1-4 主链路工具治理（D1–D7）**：已落地 **`ToolRegistry`**（内置 `echo/ping` + **`vagent.mcp.registry-tools`** 追加登记，启动时校验 classpath schema 存在）；**仍无**跨实例统一配额等；入参/出参 JSON Schema 与 `TOOL_SCHEMA_INVALID` / `TOOL_RESULT_SCHEMA_INVALID`（见 §P1-4）；**D-5** 审计表 `mcp_tool_invocations`；**D-6** 进程内配额（`TOOL_RATE_LIMITED`）；**D-7** 见下节 **`registry-tools`**。
+- **P1-4 主链路工具治理（D1–D8）**：已落地 **`ToolRegistry`**（内置 `echo/ping` + **`vagent.mcp.registry-tools`**，启动时校验 classpath schema）；**`vagent.mcp.tool-call-timeouts`** + **`registry-tools[].tool-call-timeout`** 覆盖单次 `tools/call` HTTP 超时（**D-8**）；**仍无**跨实例统一配额等；入参/出参 JSON Schema 与 `TOOL_SCHEMA_INVALID` / `TOOL_RESULT_SCHEMA_INVALID`；**D-5** 审计表；**D-6** `TOOL_RATE_LIMITED`；**D-7/D-8** 见下节。
 - **P1-0 后续「error_code 字面」**：检索前 **`EvalChatSafetyGate` 的 `clarify`** 已使用 **`GUARDRAIL_TRIGGERED`**（**非** `RETRIEVE_LOW_CONFIDENCE`）；B-3 起把核心 `error_code` / `low_confidence_*` 字段收口为 SSOT 常量类（避免散落字符串），并补齐工具侧 `TOOL_SCHEMA_INVALID` 与 `meta.tool_*` 键名的 SSOT。
 
 #### 未在代码中实现（文档仍为建议项）
@@ -625,7 +625,7 @@ Reflection 输出必须是结构化结果（由服务端生成，不让 LLM 决�
 
 ### P1-4 工具治理继续加深（U7 之后）
 
-> **本仓库已落地的子集**：`tool_policy=stub` 可跑 **`p0_v0_tool_*`**；桩 **输出 JSON Schema**（`EvalStubToolPayloadValidator` + `classpath:/eval/stub-schemas/`）；桩 **熔断/超时**；**`tool_policy=real`** 与 **`HttpMcpClient`** 共用 **`vagent.mcp.tool-call-timeout`**。**P1-4 已补一版**：`echo`/`ping` 的 MCP **入参** JSON Schema（`McpToolArgumentSchemaValidator` + `classpath:/mcp/tool-arg-schemas/`），在 **`RagStreamChatService#tryCallToolForContext`** 与 **eval real** 路径于 **`callTool` 前**校验；失败时 **`TOOL_SCHEMA_INVALID`**、**`meta.tool_schema_violations[]`**（SSE 另有 **`meta.tool_error_code`**，且在未占用时写入 **`meta.error_code`** 以对齐根级归因）。评测请求可选 **`mcp_tool_arguments`** 覆盖自动组参（仅 eval）。**`ToolRegistry` 运营增强（跨实例配额等）** 仍按需迭代；**D-5/D-6/D-7** 见下节 **`mcp_tool_invocations`**、**`vagent.mcp.quota`**、**`vagent.mcp.registry-tools`**。
+> **本仓库已落地的子集**：`tool_policy=stub` 可跑 **`p0_v0_tool_*`**；桩 **输出 JSON Schema**（`EvalStubToolPayloadValidator` + `classpath:/eval/stub-schemas/`）；桩 **熔断/超时**；**`tool_policy=real`** 与 **`HttpMcpClient`** 共用 **`vagent.mcp.tool-call-timeout`**。**P1-4 已补一版**：`echo`/`ping` 的 MCP **入参** JSON Schema（`McpToolArgumentSchemaValidator` + `classpath:/mcp/tool-arg-schemas/`），在 **`RagStreamChatService#tryCallToolForContext`** 与 **eval real** 路径于 **`callTool` 前**校验；失败时 **`TOOL_SCHEMA_INVALID`**、**`meta.tool_schema_violations[]`**（SSE 另有 **`meta.tool_error_code`**，且在未占用时写入 **`meta.error_code`** 以对齐根级归因）。评测请求可选 **`mcp_tool_arguments`** 覆盖自动组参（仅 eval）。**`ToolRegistry` 运营增强（跨实例配额等）** 仍按需迭代；**D-5–D-8** 见下节 **`mcp_tool_invocations`**、**`vagent.mcp.quota`**、**`registry-tools`**、**`tool-call-timeouts`**。
 
 - **现状**：白名单 + 参数收敛 + meta
 - **建议实现**
@@ -693,6 +693,8 @@ Reflection 输出必须是结构化结果（由服务端生成，不让 LLM 决�
 - **D-6（已做，进程内配额）**：**`vagent.mcp.quota`**（`enabled` / `window` / `max-invocations-per-user-per-tool-per-window` / `max-invocations-per-conversation-per-tool-per-window`）。在 **入参 schema 通过后**、`callTool` 前计数；超限返回 **`TOOL_RATE_LIMITED`**（eval 根级 `error_code` + `meta.tool_error_code`；SSE 与 D-3 `tool-fail-behavior=clarify` 对齐时可转澄清）。**不设分布式协调**：水平扩展时各 JVM 独立计数。
 
 - **D-7（已做，可配置登记）**：**`vagent.mcp.registry-tools[]`**（`name`、`version`、`arg-schema-key`、`result-schema-key`、`result-schema-required`）。在 **`echo`/`ping` 之后**合并；**重名跳过**（内置优先）。须在 classpath 提供 **`/mcp/tool-arg-schemas/<key>.schema.json`** 与 **`/mcp/tool-result-schemas/<key>.schema.json`**，否则 **启动失败**（快速暴露配置错误）。**仍须**把工具名列入 **`vagent.mcp.allowed-tools`** 才会进入主链路调用。
+
+- **D-8（已做，按工具 HTTP 超时）**：**`vagent.mcp.tool-call-timeouts`**（`Map<toolNameLower, Duration>`）与 **`registry-tools[].tool-call-timeout`**；后者优先于前者。传入 **`HttpMcpClient`** 的 **`HttpRequest#timeout`**，仅作用于 **`tools/call`**；**`initialize` / `tools/list`** 等仍走 **`request-timeout`**。未登记覆盖的工具使用全局 **`vagent.mcp.tool-call-timeout`**。
 
 ### P1-5 evidence map + quote-only（安全/正确性增强）
 

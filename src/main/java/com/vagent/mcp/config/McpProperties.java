@@ -4,7 +4,9 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * U6：MCP（Model Context Protocol）Client 配置。
@@ -58,6 +60,13 @@ public class McpProperties {
      * {@code /mcp/tool-result-schemas/&lt;resultSchemaKey&gt;.schema.json}；与 {@code vagent.mcp.allowed-tools} 白名单独立配置。
      */
     private List<RegisteredTool> registryTools = new ArrayList<>();
+
+    /**
+     * D-8：按工具名（小写）覆盖单次 {@code tools/call} 的 HTTP 超时；未列出的工具仍用 {@link #toolCallTimeout}。
+     * <p>
+     * {@link RegisteredTool#getToolCallTimeout()} 优先于本映射中的同工具条目。
+     */
+    private Map<String, Duration> toolCallTimeoutsByTool = new LinkedHashMap<>();
 
     public boolean isEnabled() {
         return enabled;
@@ -147,6 +156,14 @@ public class McpProperties {
         this.registryTools = registryTools != null ? registryTools : new ArrayList<>();
     }
 
+    public Map<String, Duration> getToolCallTimeoutsByTool() {
+        return toolCallTimeoutsByTool;
+    }
+
+    public void setToolCallTimeoutsByTool(Map<String, Duration> toolCallTimeoutsByTool) {
+        this.toolCallTimeoutsByTool = toolCallTimeoutsByTool != null ? toolCallTimeoutsByTool : new LinkedHashMap<>();
+    }
+
     public static final class RegisteredTool {
         /** 工具名（trim 后转小写登记）；不可为空。 */
         private String name = "";
@@ -165,6 +182,12 @@ public class McpProperties {
 
         /** 是否强制做 MCP 返回值的 JSON Schema 校验（与内置工具一致）。 */
         private boolean resultSchemaRequired = true;
+
+        /**
+         * 覆盖该工具单次 {@code tools/call} 的 HTTP 超时；未设置则回退到 {@code vagent.mcp.tool-call-timeouts.<name>}
+         * 及全局 {@code vagent.mcp.tool-call-timeout}。
+         */
+        private Duration toolCallTimeout;
 
         public String getName() {
             return name;
@@ -204,6 +227,14 @@ public class McpProperties {
 
         public void setResultSchemaRequired(boolean resultSchemaRequired) {
             this.resultSchemaRequired = resultSchemaRequired;
+        }
+
+        public Duration getToolCallTimeout() {
+            return toolCallTimeout;
+        }
+
+        public void setToolCallTimeout(Duration toolCallTimeout) {
+            this.toolCallTimeout = toolCallTimeout;
         }
     }
 

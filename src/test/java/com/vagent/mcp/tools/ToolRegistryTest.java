@@ -3,6 +3,8 @@ package com.vagent.mcp.tools;
 import com.vagent.mcp.config.McpProperties;
 import org.junit.jupiter.api.Test;
 
+import java.time.Duration;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -52,5 +54,27 @@ class ToolRegistryTest {
         p.getRegistryTools().add(rt);
 
         assertThrows(IllegalStateException.class, () -> new ToolRegistry(p));
+    }
+
+    @Test
+    void builtinEchoHonorsToolCallTimeoutsMap() {
+        McpProperties p = new McpProperties();
+        p.getToolCallTimeoutsByTool().put("echo", Duration.ofSeconds(99));
+        ToolRegistry reg = new ToolRegistry(p);
+        assertEquals(Duration.ofSeconds(99), reg.toolCallTimeout("echo").orElseThrow());
+    }
+
+    @Test
+    void registeredToolExplicitTimeoutOverridesMap() {
+        McpProperties p = new McpProperties();
+        p.getToolCallTimeoutsByTool().put("regtest", Duration.ofSeconds(1));
+        McpProperties.RegisteredTool rt = new McpProperties.RegisteredTool();
+        rt.setName("regtest");
+        rt.setVersion("1.0.0");
+        rt.setToolCallTimeout(Duration.ofSeconds(7));
+        p.getRegistryTools().add(rt);
+
+        ToolRegistry reg = new ToolRegistry(p);
+        assertEquals(Duration.ofSeconds(7), reg.toolCallTimeout("regtest").orElseThrow());
     }
 }

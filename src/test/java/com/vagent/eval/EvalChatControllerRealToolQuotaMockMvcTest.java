@@ -16,6 +16,7 @@ import java.util.Map;
 import static com.vagent.eval.EvalChatContractTestSupport.TOKEN_PLAINTEXT;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -50,7 +51,7 @@ class EvalChatControllerRealToolQuotaMockMvcTest {
 
     @Test
     void thirdRealToolCallHitsRateLimitWithoutCallingMcpAgain() throws Exception {
-        when(mcpClient.callTool(eq("echo"), any())).thenReturn(Map.of("content", "ok"));
+        when(mcpClient.callTool(eq("echo"), any(), isNull())).thenReturn(Map.of("content", "ok"));
 
         String body =
                 "{\"query\":\"q\",\"mode\":\"EVAL\",\"requires_citations\":false,"
@@ -85,6 +86,6 @@ class EvalChatControllerRealToolQuotaMockMvcTest {
                 .andExpect(jsonPath("$.tool.outcome").value("error"))
                 .andExpect(jsonPath("$.meta.tool_error_code").value("TOOL_RATE_LIMITED"));
 
-        verify(mcpClient, times(2)).callTool(eq("echo"), any());
+        verify(mcpClient, times(2)).callTool(eq("echo"), any(), isNull());
     }
 }

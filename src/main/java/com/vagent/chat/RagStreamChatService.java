@@ -46,6 +46,7 @@ import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.io.IOException;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -946,7 +947,9 @@ public class RagStreamChatService {
             long callStartNs = System.nanoTime();
             Map<String, Object> result;
             try {
-                result = client.callTool(toolName, args);
+                Duration perToolHttpTimeout =
+                        toolRegistry != null ? toolRegistry.toolCallTimeout(toolName).orElse(null) : null;
+                result = client.callTool(toolName, args, perToolHttpTimeout);
             } catch (Exception e) {
                 long callLatencyMs = (System.nanoTime() - callStartNs) / 1_000_000L;
                 log.warn("mcp tool call failed: tool={}", toolName, e);

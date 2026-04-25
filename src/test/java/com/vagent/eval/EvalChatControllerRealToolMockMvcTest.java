@@ -16,6 +16,7 @@ import java.util.Map;
 import static com.vagent.eval.EvalChatContractTestSupport.TOKEN_PLAINTEXT;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -46,7 +47,7 @@ class EvalChatControllerRealToolMockMvcTest {
 
     @Test
     void realToolPolicyInvokesMcpWhenBeanPresent() throws Exception {
-        when(mcpClient.callTool(eq("echo"), any()))
+        when(mcpClient.callTool(eq("echo"), any(), isNull()))
                 .thenReturn(Map.of("content", "echo-result"));
 
         mockMvc.perform(
@@ -95,12 +96,12 @@ class EvalChatControllerRealToolMockMvcTest {
                 .andExpect(jsonPath("$.meta.tool_result_schema_required").value(true))
                 .andExpect(jsonPath("$.meta.tool_result_schema_validated").value(false));
 
-        verify(mcpClient, never()).callTool(any(), any());
+        verify(mcpClient, never()).callTool(any(), any(), any());
     }
 
     @Test
     void realToolResultSchemaInvalidMarksErrorCode() throws Exception {
-        when(mcpClient.callTool(eq("echo"), any()))
+        when(mcpClient.callTool(eq("echo"), any(), isNull()))
                 .thenReturn(Map.of("not_content", "x"));
 
         mockMvc.perform(

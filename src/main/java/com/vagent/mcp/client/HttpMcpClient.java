@@ -52,7 +52,7 @@ public final class HttpMcpClient implements McpClient {
     @Override
     public List<Map<String, Object>> listTools() {
         ensureInitialized();
-        JsonNode result = call("tools/list", objectMapper.createObjectNode(), null);
+        JsonNode result = call("tools/list", objectMapper.createObjectNode(), "tools/list", null);
         JsonNode tools = result.get("tools");
         List<Map<String, Object>> out = new ArrayList<>();
         if (tools != null && tools.isArray()) {
@@ -66,14 +66,14 @@ public final class HttpMcpClient implements McpClient {
     }
 
     @Override
-    public Map<String, Object> callTool(String name, Map<String, Object> arguments) {
+    public Map<String, Object> callTool(String name, Map<String, Object> arguments, Duration perToolHttpTimeout) {
         ensureInitialized();
         ObjectNode params = objectMapper.createObjectNode();
         params.put("name", name);
         if (arguments != null) {
             params.set("arguments", objectMapper.valueToTree(arguments));
         }
-        JsonNode result = call("tools/call", params, name);
+        JsonNode result = call("tools/call", params, name, perToolHttpTimeout);
         @SuppressWarnings("unchecked")
         Map<String, Object> m = objectMapper.convertValue(result, Map.class);
         return m;
@@ -102,13 +102,13 @@ public final class HttpMcpClient implements McpClient {
         clientInfo.put("version", "dev");
         params.set("clientInfo", clientInfo);
 
-        call("initialize", params, "__initialize__");
+        call("initialize", params, "__initialize__", null);
 
         // Lifecycle: client must notify initialized after initialize response.
         notify("notifications/initialized", objectMapper.createObjectNode());
     }
 
-    private JsonNode call(String method, ObjectNode params, String toolTag) {
+    private JsonNode call(String method, ObjectNode params, String toolTag, Duration toolsCallHttpTimeout) {
         long startNs = System.nanoTime();
         String outcome = "success";
         try {
@@ -122,7 +122,10 @@ public final class HttpMcpClient implements McpClient {
             }
             Duration timeout = null;
             if ("tools/call".equals(method)) {
-                timeout = properties.getToolCallTimeout();
+                timeout =
+                        toolsCallHttpTimeout != null
+                                ? toolsCallHttpTimeout
+                                : properties.getToolCallTimeout();
             }
             JsonNode response = postJsonRpc(req, true, timeout);
             JsonNode error = response.get("error");

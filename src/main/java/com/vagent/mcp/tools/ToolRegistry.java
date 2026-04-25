@@ -11,6 +11,7 @@ import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -18,9 +19,10 @@ import java.util.Map;
 import java.util.Optional;
 
 /**
- * 工具治理 SSOT：集中管理「工具 schema 键、版本、指纹」等元信息。
+ * 工具治理 SSOT：集中管理「工具 schema 键、版本、指纹、可选 HTTP 超时」等元信息。
  * <p>
  * 内置 {@code echo}/{@code ping}；可通过 {@code vagent.mcp.registry-tools} 追加登记（D-7），须已有对应 classpath JSON Schema。
+ * 可选按工具 HTTP 超时见 {@code vagent.mcp.tool-call-timeouts} 与 {@link McpProperties.RegisteredTool#getToolCallTimeout()}（D-8）。
  */
 @Component
 public final class ToolRegistry {
@@ -31,6 +33,7 @@ public final class ToolRegistry {
      * 最小信息（D-2 版）：
      * - toolVersion：语义化版本（registry 控制）
      * - toolSchemaHash：对入参/出参 schema 的 SHA-256 指纹（稳定、可审计）
+     * - toolCallTimeout：可选，覆盖单次 {@code tools/call} 的 HTTP 超时（D-8）
      */
     public record ToolSpec(
             String toolNameLower,
@@ -38,19 +41,20 @@ public final class ToolRegistry {
             String argSchemaKey,
             String resultSchemaKey,
             boolean resultSchemaRequired,
-            String toolSchemaHash) {}
+            String toolSchemaHash,
+            Optional<Duration> toolCallTimeout) {}
 
     private final Map<String, ToolSpec> byNameLower;
 
     public ToolRegistry(McpProperties mcpProperties) {
         Map<String, ToolSpec> map = new LinkedHashMap<>();
-        putBuiltin(map, "echo", "1.0.0", "echo", "echo", true);
-        putBuiltin(map, "ping", "1.0.0", "ping", "ping", true);
+        putBuiltin(map, mcpProperties, "echo", "1.0.0", "echo", "echo", true);
+        putBuiltin(map, mcpProperties, "ping", "1.0.0", "ping", "ping", true);
         if (mcpProperties != null) {
             List<McpProperties.RegisteredTool> extras = mcpProperties.getRegistryTools();
             if (extras != null) {
                 for (McpProperties.RegisteredTool rt : extras) {
-                    registerConfigured(map, rt);
+                    registerConfigured(map, mcpProperties, rt);
                 }
             }
         }
@@ -59,6 +63,7 @@ public final class ToolRegistry {
 
     private static void putBuiltin(
             Map<String, ToolSpec> map,
+            McpProperties mcpProperties,
             String nameLower,
             String version,
             String argSchemaKey,
@@ -72,10 +77,11 @@ public final class ToolRegistry {
                         argSchemaKey,
                         resultSchemaKey,
                         resultSchemaRequired,
-                        buildToolSchemaHash(argSchemaKey, resultSchemaKey)));
+                        buildToolSchemaHash(argSchemaKey, resultSchemaKey),
+                        resolveToolCallTimeout(mcpProperties, nameLower, null)));
     }
 
-    private static void registerConfigured(Map<String, ToolSpec> map, McpProperties.RegisteredTool rt) {
+    private static void registerConfigured(Map<String, ToolSpec> map, McpProperties mcpProperties, McpProperties.RegisteredTool rt) {
         String n = normalize(rt.getName());
         if (n == null) {
             log.warn("Skipping vagent.mcp.registry-tools entry with blank name");
@@ -99,7 +105,16 @@ public final class ToolRegistry {
                         : n;
         try {
             String hash = buildToolSchemaHash(argKey, resKey);
-            map.put(n, new ToolSpec(n, version, argKey, resKey, rt.isResultSchemaRequired(), hash));
+            map.put(
+                    n,
+                    new ToolSpec(
+                            n,
+                            version,
+                            argKey,
+                            resKey,
+                            rt.isResultSchemaRequired(),
+                            hash,
+                            resolveToolCallTimeout(mcpProperties, n, rt.getToolCallTimeout())));
         } catch (RuntimeException e) {
             throw new IllegalStateException(
                     "Invalid vagent.mcp.registry-tools entry for tool '"
@@ -111,6 +126,29 @@ public final class ToolRegistry {
                             + "'",
                     e);
         }
+    }
+
+    private static Optional<Duration> resolveToolCallTimeout(
+            McpProperties props, String nameLower, Duration explicitOnEntry) {
+        if (explicitOnEntry != null && !explicitOnEntry.isNegative() && !explicitOnEntry.isZero()) {
+            return Optional.of(explicitOnEntry);
+        }
+        if (props == null || props.getToolCallTimeoutsByTool() == null || props.getToolCallTimeoutsByTool().isEmpty()) {
+            return Optional.empty();
+        }
+        Duration d = props.getToolCallTimeoutsByTool().get(nameLower);
+        if (d == null) {
+            for (Map.Entry<String, Duration> e : props.getToolCallTimeoutsByTool().entrySet()) {
+                if (e.getKey() != null && nameLower.equalsIgnoreCase(e.getKey().trim())) {
+                    d = e.getValue();
+                    break;
+                }
+            }
+        }
+        if (d == null || d.isNegative() || d.isZero()) {
+            return Optional.empty();
+        }
+        return Optional.of(d);
     }
 
     public Optional<ToolSpec> find(String toolName) {
@@ -139,6 +177,11 @@ public final class ToolRegistry {
 
     public boolean isResultSchemaRequired(String toolName) {
         return find(toolName).map(ToolSpec::resultSchemaRequired).orElse(false);
+    }
+
+    /** 单次 {@code tools/call} HTTP 超时覆盖；空则使用 {@code vagent.mcp.tool-call-timeout}。 */
+    public Optional<Duration> toolCallTimeout(String toolName) {
+        return find(toolName).flatMap(ToolSpec::toolCallTimeout);
     }
 
     private static String buildToolSchemaHash(String argSchemaKey, String resultSchemaKey) {

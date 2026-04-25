@@ -17,6 +17,7 @@ import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -752,9 +753,11 @@ public class EvalChatController {
         boolean succeeded = true;
         Map<String, Object> result = Map.of();
         try {
-            // 与 RagStreamChatService.tryCallToolForContext 一致：同步 callTool，超时由 HttpMcpClient 的
-            // vagent.mcp.tool-call-timeout（tools/call）承担，避免与 eval 桩超时双轨叠加。
-            result = client.callTool(toolName, args);
+            // 与 RagStreamChatService.tryCallToolForContext 一致：同步 callTool；HTTP 超时为
+            // ToolRegistry 按工具覆盖（D-8）或 vagent.mcp.tool-call-timeout 全局值。
+            Duration perToolHttpTimeout =
+                    toolRegistry != null ? toolRegistry.toolCallTimeout(toolName).orElse(null) : null;
+            result = client.callTool(toolName, args, perToolHttpTimeout);
         } catch (Exception e) {
             succeeded = false;
             outcome = isLikelyTimeoutEval(e) ? "timeout" : "error";

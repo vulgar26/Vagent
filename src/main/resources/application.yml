@@ -158,6 +158,10 @@ vagent:
     #    arg-schema-key: my_tool
     #    result-schema-key: my_tool
     #    result-schema-required: true
+    #    tool-call-timeout: 8s
+    # D-8：按工具名覆盖 tools/call 的 HTTP 超时（未列出的仍用 tool-call-timeout）；registry-tools[].tool-call-timeout 优先
+    tool-call-timeouts: {}
+    #  echo: 5s
     # D-6：MCP callTool 前进程内配额（固定窗口；多实例各算各的）。默认关闭；在入参 schema 通过后扣减。
     quota:
       enabled: false
