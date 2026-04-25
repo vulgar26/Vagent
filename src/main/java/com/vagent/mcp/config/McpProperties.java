@@ -54,7 +54,7 @@ public class McpProperties {
     private Quota quota = new Quota();
 
     /**
-     * D-7：在 {@code echo}/{@code ping} 之外登记 {@link com.vagent.mcp.tools.ToolRegistry} 条目（版本、schema 键、指纹）。
+     * D-7：在 {@code echo}/{@code ping} 之外登记 {@link com.vagent.mcp.tools.ToolRegistry} 条目（版本、schema 键、指纹、可选 {@code tool-call-timeout}）。
      * <p>
      * Schema 文件须已存在于 classpath：{@code /mcp/tool-arg-schemas/&lt;argSchemaKey&gt;.schema.json} 与
      * {@code /mcp/tool-result-schemas/&lt;resultSchemaKey&gt;.schema.json}；与 {@code vagent.mcp.allowed-tools} 白名单独立配置。
