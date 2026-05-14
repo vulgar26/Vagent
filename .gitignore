@@ -1,4 +1,5 @@
 target/
+out/
 !.mvn/wrapper/maven-wrapper.jar
 !**/src/main/**/target/
 !**/src/test/**/target/
@@ -36,16 +37,24 @@ build/
 .DS_Store
 
 ### JVM crash logs ###
+*.log
 hs_err_pid*.log
+hs_err_pid*
 replay_pid*.log
+replay_pid*
 
 ### Local overrides (secrets / MCP / LLM) ###
+.env
+application-local.yml
 src/main/resources/application-local.yml
+local-artifacts/
 
 ### Eval export artifacts (regenerate via export-eval-run-failures.ps1) ###
 plans/datasets/run_failures.csv
 plans/datasets/artifacts/
 eval_run_*.json
 ### Eval compare / run exports at repo root (local留证；勿提交；可从 eval API 重拉) ###
+eval_compare_*.json
+eval_compare_*.md
 eval_compare*.json
 eval_compare*.md

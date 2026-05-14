@@ -50,5 +50,5 @@
 |------|------|
 | 2026-04 | 初稿，对应 M6 文档交付 |
 | 2026-04 | U3：`empty-hits-behavior` 可对齐 §3「空检索不调 LLM」 |
-| 2026-04 | U4：traceId + 检索/流式 Timer；生产 DDL 仍建议 Flyway（见 U4 文档） |
+| 2026-04 | U4：traceId + 检索/流式 Timer；后续已引入 Flyway，PostgreSQL DDL 以 `db/migration` 为准（见 U4 文档） |
 | 2026-04 | U5：第二路全局向量默认关；跨租户见 [U5-实现说明.md](U5-实现说明.md) |

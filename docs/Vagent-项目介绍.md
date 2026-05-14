@@ -24,7 +24,7 @@
 | 嵌入 | `hash`（可复现）或 **`dashscope`**（U2，`text-embedding-v3`×**1024 维**） | 维度须与 `vector(1024)` 一致；见 [U2-实现说明.md](U2-实现说明.md) |
 | 流式输出 | `SseEmitter` | 事件体为 JSON，`type` 区分 meta/chunk/done 等 |
 | 大模型（U1） | `noop` / `fake-stream` / **`dashscope`**（通义千问兼容 HTTP 流式） | 见 `LlmClientConfiguration`、 [U1-实现说明.md](U1-实现说明.md) |
-| MCP（U6） | HTTP JSON-RPC（Streamable HTTP 的 JSON-only 响应模式） | Vagent 作为 **MCP Client** 联调独立进程 Server；见 [U6-实现说明.md](U6-实现说明.md) |
+| MCP（U6/U7） | HTTP JSON-RPC（Streamable HTTP 的 JSON-only 响应模式） | Vagent 作为 **MCP Client** 联调独立进程 Server；U7 起提供显式工具意图 + 白名单的主链路受控子集，默认关闭。见 [U6-实现说明.md](U6-实现说明.md)、[U7-实现说明.md](U7-实现说明.md) |
 | 测试 | JUnit 5、Spring Boot Test、H2（PostgreSQL 模式） | 默认不测真实向量；pgvector 有单独集成测试类 |
 
 ---
@@ -45,7 +45,7 @@
 | `embedding` | 嵌入客户端接口与配置（如 hash 实现） |
 | `llm` | `LlmClient` / `LlmChatRequest` / `LlmMessage` / `LlmStreamSink`；`impl` 下 `noop`、`fake-stream` |
 | `orchestration` | M5：**检索前改写**、**规则意图**（`RAG` / `SYSTEM_DIALOG` / `CLARIFICATION`） |
-| `mcp` | U6：MCP Client（HTTP）与联调 API（`/api/v1/mcp/*`）；当前不直接并入 RAG 主链路 |
+| `mcp` | U6：MCP Client（HTTP）与联调 API（`/api/v1/mcp/*`）；U7：显式工具意图、白名单、schema 校验与主链路受控调用（默认关闭） |
 | `api` | 全局异常处理等横切 |
 
 **编排 heart**：`StreamChatService` 根据 `vagent.rag.enabled` 决定走 **M3 单条 USER** 还是 **`RagStreamChatService` 全链路**。
@@ -80,7 +80,7 @@
 | `messages` | 会话内多轮消息，**仅 USER/ASSISTANT**；删会话级联删消息 |
 | `kb_documents` / `kb_chunks` | 知识库文档与分块；向量列与 `pgvector` 一致；检索带 **用户隔离** |
 
-DDL 入口：`src/main/resources/schema-core.sql`（核心业务）、`schema-vector.sql`（扩展与向量表）。测试 profile 通常**只加载** `schema-core.sql`，并关闭 RAG，避免 H2 缺向量表。
+DDL 入口：生产/本地 PostgreSQL 以 `src/main/resources/db/migration/` 下的 Flyway 迁移为准；`schema-core.sql`、`schema-vector.sql` 主要保留给测试或手工参考。测试 profile 通常**只加载** `schema-core.sql`，并关闭 RAG，避免 H2 缺向量表。
 
 ---
 
@@ -113,7 +113,7 @@ DDL 入口：`src/main/resources/schema-core.sql`（核心业务）、`schema-ve
 | `vagent.llm.dashscope.*` | U1：兼容模式基址、API Key、对话模型（仅 `provider=dashscope` 时生效） |
 | `vagent.embedding.*` | 嵌入实现（`hash`/`dashscope`）与维度（默认 **1024**）、分块长度 |
 | `vagent.embedding.dashscope.*` | U2：嵌入 API 基址、Key、模型名 |
-| `vagent.mcp.*` | U6：MCP Client（HTTP）开关、base url、token、协议版本；以及联调 API 行为 |
+| `vagent.mcp.*` | U6/U7：MCP Client（HTTP）开关、base url、token、协议版本、工具白名单、超时、配额与 schema 行为 |
 | `vagent.security.jwt.*` | JWT 密钥与过期时间 |
 
 生产环境务必将密钥改为环境变量或外部配置，**勿**提交真实密钥。
@@ -154,10 +154,10 @@ DDL 入口：`src/main/resources/schema-core.sql`（核心业务）、`schema-ve
 ## 10. 后续可演进方向（非承诺）
 
 - 真实厂商 **流式 HTTP** `LlmClient`、密钥与超时配置化。  
-- **U4** 已提供 traceId 与基础 Timer；**Trace 落库 / 多路检索 / MCP** 等见 [Vagent-升级策划书.md](Vagent-升级策划书.md) U5+。  
+- **U4** 已提供 traceId 与基础 Timer；Trace 落库仍未做。U5/U7 已提供多路检索与 MCP 主链路受控子集，默认关闭。  
 - **LLM 改写 / 子问题拆分** 替换当前规则实现。  
 - 请求追踪、各阶段耗时指标（Micrometer / Trace）。  
-- Flyway/Liquibase 替代 `spring.sql.init.mode=always`。
+- 继续完善 Flyway 迁移治理、回滚说明和真实环境初始化手册。
 
 ---
 
