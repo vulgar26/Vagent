@@ -1,4 +1,4 @@
-# 连接「公网或 runner 可达」的 vagent-eval，发起一次全量 run（见 plans/ci-eval-github-actions.md）。
+# 连接「公网或 runner 可达」的 vagent-eval，发起一次全量 run（见 docs/archive/plans/ci-eval-github-actions.md）。
 # 未配置 EVAL_BASE_URL 时跳过远程步骤，不把 job 标红。
 
 name: eval-remote
@@ -28,7 +28,7 @@ jobs:
         run: |
           if [ -z "$EVAL_BASE_URL" ] || [ -z "$EVAL_RUN_PAYLOAD_JSON" ]; then
             echo "Secrets EVAL_BASE_URL / EVAL_RUN_PAYLOAD_JSON not set — skipping remote eval."
-            echo "See plans/ci-eval-github-actions.md for setup (public eval URL, self-hosted runner, or tunnel)."
+            echo "See docs/archive/plans/ci-eval-github-actions.md for setup (public eval URL, self-hosted runner, or tunnel)."
             exit 0
           fi
           chmod +x scripts/ci-eval-remote.sh

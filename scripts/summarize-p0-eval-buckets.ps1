@@ -2,7 +2,7 @@
 .SYNOPSIS
   Join eval results JSON with p0-dataset-v0.jsonl tags; print P0-style bucket stats.
   NOTE: These bucket pass rates are NOT the same as run.report pass_rate when SKIPPED cases exist;
-        see plans/vagent-upgrade.md "SSOT: run.report.pass_rate 与 P0 分桶门槛".
+        see docs/archive/plans/vagent-upgrade.md "SSOT: run.report.pass_rate 与 P0 分桶门槛".
 .EXAMPLE
   .\scripts\summarize-p0-eval-buckets.ps1 `
     -ResultsPath ".\eval_run_run_e4d7fa1ce57f47b3a0ef4ae2198a0918_results.json" `

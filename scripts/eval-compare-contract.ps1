@@ -1,5 +1,5 @@
 # Dot-source only: helpers for compare-eval-runs.ps1 / compare-eval-results-files.ps1
-# 契约类归因（与 plans/vagent-upgrade.md「必须可归因的错误码」对齐，用于 compare 门禁）
+# 契约类归因（与 docs/archive/plans/vagent-upgrade.md「必须可归因的错误码」对齐，用于 compare 门禁）
 
 function Get-EvalContractErrorCodes {
     return [string[]]@(

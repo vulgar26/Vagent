@@ -1,47 +1,29 @@
 # Vagent 文档导航
 
-本文档帮助面试官或维护者快速判断：哪些内容是当前已实现，哪些是设计计划，哪些是面试准备或历史归档。
+本目录只保留面试官快速判断项目质量需要看的文档。阶段总结、升级计划、P0/P1 开发记录和个人面试准备材料已归档到 `docs/archive/`。
 
-## 已实现说明
-
-这些文档优先作为代码阅读入口。
+## 推荐阅读
 
 | 文档 | 内容 |
 | --- | --- |
-| [Vagent-项目介绍.md](Vagent-项目介绍.md) | 项目总览、包结构、核心链路、接口与配置 |
-| [DECISIONS.md](DECISIONS.md) | 与参考主链路的差异、取舍和边界 |
-| [M0-实现说明.md](M0-实现说明.md) | Spring Boot 地基与 LLM 抽象 |
-| [M1-实现说明.md](M1-实现说明.md) | 用户、JWT、会话 API |
-| [M2-实现说明.md](M2-实现说明.md) | pgvector 知识库、嵌入、检索 API |
-| [M3-实现说明.md](M3-实现说明.md) | SSE 流式输出与任务取消 |
-| [M4-实现说明.md](M4-实现说明.md) | 多轮消息与 RAG 编排 |
-| [M5-实现说明.md](M5-实现说明.md) | query rewrite、规则意图、澄清分支 |
-| [M6-实现说明.md](M6-实现说明.md) | 测试、决策文档、可复现环境 |
-| [U1-实现说明.md](U1-实现说明.md) | DashScope 流式对话 |
-| [U2-实现说明.md](U2-实现说明.md) | DashScope embedding 与 1024 维向量 |
-| [U3-实现说明.md](U3-实现说明.md) | 空检索策略：`allow-llm` / `no-llm` |
-| [U4-实现说明.md](U4-实现说明.md) | traceId、Micrometer、Flyway 口径 |
-| [U5-实现说明.md](U5-实现说明.md) | 第二路检索与合并 |
-| [U6-实现说明.md](U6-实现说明.md) | MCP HTTP Client 与联调入口 |
-| [U7-实现说明.md](U7-实现说明.md) | MCP 主链路受控调用：显式意图 + 白名单 |
+| [Vagent-项目介绍.md](Vagent-项目介绍.md) | 项目总览、包结构、核心链路、数据模型、接口与配置 |
+| [DECISIONS.md](DECISIONS.md) | 关键取舍、能力边界、哪些默认关闭 |
 
-## 设计计划
-
-这些文档包含路线图、历史计划或更高阶目标。阅读时以“计划/约束/背景”为主，最终实现状态以源码、README 和已实现说明为准。
+## Eval / Evidence
 
 | 文档 | 内容 |
 | --- | --- |
-| [Vagent-项目策划书.md](Vagent-项目策划书.md) | 原始立项与里程碑设计 |
-| [Vagent-升级策划书.md](Vagent-升级策划书.md) | M6 之后的升级路线与状态对照 |
-| [工程折中与生产对照.md](工程折中与生产对照.md) | 当前工程实现与生产级方案的差异 |
+| [scripts/README-eval-kb.md](../scripts/README-eval-kb.md) | eval 知识库准备、固定题集联调、工具题策略 |
+| [scripts/README-hybrid-rerank-ab.md](../scripts/README-hybrid-rerank-ab.md) | hybrid / rerank A/B 对比与 compare 脚本 |
+| [docs/archive/plans/quote-only-guardrails.md](archive/plans/quote-only-guardrails.md) | quote-only、evidence map、引用约束的细节口径 |
 
-更多评测、回归、hybrid/rerank A/B、CI 对接计划位于仓库根目录的 [plans/](../plans/) 与 [scripts/](../scripts/)。
+## 归档
 
-## 面试准备/归档材料
-
-| 文档 | 内容 |
+| 目录 | 内容 |
 | --- | --- |
-| [面试准备.md](面试准备.md) | 项目口述稿、常见追问与回答边界 |
+| [archive/implementation/](archive/implementation/) | M0-M6、U1-U7 阶段实现说明 |
+| [archive/plans/](archive/plans/) | 升级计划、P0/P1、回归评测、CI 对接、历史策划材料 |
+| [archive/interview/](archive/interview/) | 个人面试准备稿 |
 
 ## 当前口径提醒
 

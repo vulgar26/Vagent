@@ -2,7 +2,7 @@
 
 目标：在**冻结的同一 `dataset_id`**、同一评测环境、同一 `target_id=vagent` 下，对比「关 hybrid / 开 hybrid /（可选）开 rerank」等配置跑出的两次（或多次）`run_id`，并用脚本做 verdict 差分；**门禁**为：不出现**契约类**回归（见下文）。
 
-实现与开关说明见仓库根目录 `plans/vagent-upgrade.md` 中「混合检索 + 可选重排」一节；应用配置键为 `vagent.rag.hybrid.*`、`vagent.rag.rerank.*`（默认全关）。当前工程内 **rerank 供应商未接入** 时，`rerank_outcome` 多为 `skipped`，对比重点在 **hybrid 开关** 即可。
+实现与开关说明见归档文档 `docs/archive/plans/vagent-upgrade.md` 中「混合检索 + 可选重排」一节；应用配置键为 `vagent.rag.hybrid.*`、`vagent.rag.rerank.*`（默认全关）。当前工程内 **rerank 供应商未接入** 时，`rerank_outcome` 多为 `skipped`，对比重点在 **hybrid 开关** 即可。
 
 ---
 
@@ -10,9 +10,9 @@
 
 | 项 | 说明 |
 |----|------|
-| 题集 | 使用已在评测服务中导入的冻结 `dataset_id`（登记见 `plans/regression-baseline-convention.md`）。 |
+| 题集 | 使用已在评测服务中导入的冻结 `dataset_id`（历史登记见 `docs/archive/plans/regression-baseline-convention.md`）。 |
 | 知识库 | 若要对齐「空库 / gold」口径，见 `scripts/README-eval-kb.md`。 |
-| 评测服务 | 能创建 run、拉取 `report`/`results`（与 `plans/eval-upgrade.md` 一致）。 |
+| 评测服务 | 能创建 run、拉取 `report`/`results`（历史契约见 `docs/archive/plans/eval-upgrade.md`）。 |
 | Vagent | eval 配置的 `base-url` 可达；`X-Eval-Token` 与 `vagent.eval.api` 一致。 |
 
 ---
@@ -83,8 +83,8 @@
 | `scripts/compare-eval-runs.ps1` | 在线拉取两 run 的 results + report，生成 compare JSON/MD，可选 dataset 校验与契约门禁。支持 **`-EvalHttpToken`** 或环境变量 **`EVAL_HTTP_TOKEN`**（`Authorization: Bearer`）。 |
 | `scripts/compare-eval-results-files.ps1` | 离线两段 results 文件对比。 |
 | `scripts/eval-compare-contract.ps1` | 被上述脚本点源；契约 `error_code` 集合的单点维护。 |
-| `plans/regression-compare-standard-runbook.md` | 通用 compare 留证流程。 |
+| `docs/archive/plans/regression-compare-standard-runbook.md` | 通用 compare 留证流程。 |
 
 ## 5. GitHub Actions（可选）
 
-手动触发 **`.github/workflows/hybrid-ab-compare.yml`**：输入 **`base_run_id`** / **`cand_run_id`**；在仓库 **Secrets** 中配置 **`EVAL_BASE_URL`**（及可选 **`EVAL_HTTP_TOKEN`**，与远程 eval 脚本一致）。未配置 **`EVAL_BASE_URL`** 时步骤跳过且 job 为绿。产物上传至 workflow artifact **`compare-out/`**（`eval_compare_*.json` / `.md`）。公网 / runner 可达性说明见 **`plans/ci-eval-github-actions.md`**。
+手动触发 **`.github/workflows/hybrid-ab-compare.yml`**：输入 **`base_run_id`** / **`cand_run_id`**；在仓库 **Secrets** 中配置 **`EVAL_BASE_URL`**（及可选 **`EVAL_HTTP_TOKEN`**，与远程 eval 脚本一致）。未配置 **`EVAL_BASE_URL`** 时步骤跳过且 job 为绿。产物上传至 workflow artifact **`compare-out/`**（`eval_compare_*.json` / `.md`）。公网 / runner 可达性说明见 **`docs/archive/plans/ci-eval-github-actions.md`**。

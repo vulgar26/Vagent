@@ -34,7 +34,7 @@ jobs:
         run: |
           if ([string]::IsNullOrWhiteSpace($env:EVAL_BASE_URL)) {
             Write-Host "Secret EVAL_BASE_URL not set — skipping hybrid A/B compare."
-            Write-Host "See scripts/README-hybrid-rerank-ab.md and plans/ci-eval-github-actions.md."
+            Write-Host "See scripts/README-hybrid-rerank-ab.md and docs/archive/plans/ci-eval-github-actions.md."
             exit 0
           }
           $base = $env:EVAL_BASE_URL.TrimEnd('/')

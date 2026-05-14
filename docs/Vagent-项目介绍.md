@@ -8,7 +8,7 @@
 
 **Vagent** 是一个用 **Java / Spring Boot** 实现的、偏**企业工程化**风格的**对话式 RAG（检索增强生成）**示例项目：用户登录后拥有独立会话与知识库，可在会话内向量检索文档片段，并通过 **SSE** 流式获取模型回复（当前模型侧为可插拔实现，含 `noop` / `fake-stream` 等占位，便于无密钥环境跑通全链路）。
 
-**它不追求**与某开源仓库逐文件对齐，而是对照《[Vagent-项目策划书.md](Vagent-项目策划书.md)》中对 **Ragent 主链路（§3）** 的能力拆解，在 Vagent 中**自研实现**可观察行为相近的一条流水线，便于学习与面试叙述。与参考实现的**刻意差异**集中写在 [DECISIONS.md](DECISIONS.md)。
+**它不追求**与某开源仓库逐文件对齐，而是对照早期策划材料中对 RAG 主链路的能力拆解，在 Vagent 中实现可观察行为相近的一条流水线。与参考主链路的**刻意差异**集中写在 [DECISIONS.md](DECISIONS.md)。
 
 ---
 
@@ -21,10 +21,10 @@
 | 安全 | Spring Security + JWT | 无 Session，API 带 `Authorization: Bearer` |
 | 持久化 | MyBatis-Plus、PostgreSQL | 业务表 + 向量扩展 |
 | 向量检索 | pgvector | 文档分块嵌入后写入，检索时同用户隔离 |
-| 嵌入 | `hash`（可复现）或 **`dashscope`**（U2，`text-embedding-v3`×**1024 维**） | 维度须与 `vector(1024)` 一致；见 [U2-实现说明.md](U2-实现说明.md) |
+| 嵌入 | `hash`（可复现）或 **`dashscope`**（`text-embedding-v3`×**1024 维**） | 维度须与 `vector(1024)` 一致 |
 | 流式输出 | `SseEmitter` | 事件体为 JSON，`type` 区分 meta/chunk/done 等 |
-| 大模型（U1） | `noop` / `fake-stream` / **`dashscope`**（通义千问兼容 HTTP 流式） | 见 `LlmClientConfiguration`、 [U1-实现说明.md](U1-实现说明.md) |
-| MCP（U6/U7） | HTTP JSON-RPC（Streamable HTTP 的 JSON-only 响应模式） | Vagent 作为 **MCP Client** 联调独立进程 Server；U7 起提供显式工具意图 + 白名单的主链路受控子集，默认关闭。见 [U6-实现说明.md](U6-实现说明.md)、[U7-实现说明.md](U7-实现说明.md) |
+| 大模型 | `noop` / `fake-stream` / **`dashscope`**（通义千问兼容 HTTP 流式） | 见 `LlmClientConfiguration` |
+| MCP | HTTP JSON-RPC（Streamable HTTP 的 JSON-only 响应模式） | Vagent 作为 **MCP Client** 联调独立进程 Server；提供显式工具意图 + 白名单的主链路受控子集，默认关闭 |
 | 测试 | JUnit 5、Spring Boot Test、H2（PostgreSQL 模式） | 默认不测真实向量；pgvector 有单独集成测试类 |
 
 ---
@@ -54,7 +54,7 @@
 
 ## 4. 核心主链路（RAG 开启时）
 
-下面描述 **`vagent.rag.enabled=true`** 且走 **`RagStreamChatService`** 时的逻辑顺序（Servlet 线程与异步线程分工与 [M4-实现说明.md](M4-实现说明.md)、[M5-实现说明.md](M5-实现说明.md) 一致）。
+下面描述 **`vagent.rag.enabled=true`** 且走 **`RagStreamChatService`** 时的逻辑顺序。
 
 1. **鉴权**：JWT 解析出 `userId`；校验 `conversationId` 属于该用户。  
 2. **读历史**：从 `messages` 表取该会话最近 N 条 **USER/ASSISTANT**（不含本轮尚未插入的句子）。  
@@ -128,26 +128,15 @@ DDL 入口：生产/本地 PostgreSQL 以 `src/main/resources/db/migration/` 下
 
 ---
 
-## 9. 里程碑与文档地图
+## 9. 文档地图
 
 | 文档 | 内容 |
 |------|------|
-| [Vagent-项目策划书.md](Vagent-项目策划书.md) | 立项、§3 参考拆解、里程碑表、交付物 |
 | [DECISIONS.md](DECISIONS.md) | 与 §3 的差异及原因 |
-| [M0-实现说明.md](M0-实现说明.md) ~ [M6-实现说明.md](M6-实现说明.md) | 各阶段实现与自测 |
-| [面试准备.md](面试准备.md) | 口述架构与问答（个人向） |
+| [archive/implementation/](archive/implementation/) | M0-M6、U1-U7 阶段实现说明归档 |
+| [archive/plans/](archive/plans/) | 策划、升级、P0/P1 与回归计划归档 |
 
-**M0–M6 一句话**：骨架与 LLM 接口 → 用户/会话/JWT → pgvector 与 KB API → SSE 与取消 → 多轮消息与 RAG 编排 → 改写与意图分支 → 单测/DECISIONS/Compose 与文档收尾。
-
-**U1（升级）**：通义千问 DashScope OpenAI 兼容流式，见 [U1-实现说明.md](U1-实现说明.md) 与 [Vagent-升级策划书.md](Vagent-升级策划书.md)。
-
-**U2（升级）**：通义千问兼容嵌入、**1024** 维向量表，见 [U2-实现说明.md](U2-实现说明.md)。
-
-**U3（升级）**：空检索是否调 LLM（`empty-hits-behavior`），见 [U3-实现说明.md](U3-实现说明.md)。
-
-**U4（升级）**：MDC `traceId`、检索与 LLM 流式 Micrometer 指标，见 [U4-实现说明.md](U4-实现说明.md)。
-
-**U5（升级）**：第二路全局向量召回与主路合并，见 [U5-实现说明.md](U5-实现说明.md)。
+阶段实现说明和历史计划已归档，不作为公开首页的主阅读路径。
 
 ---
 
